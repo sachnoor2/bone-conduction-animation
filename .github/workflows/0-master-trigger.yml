@@ -81,8 +81,8 @@ jobs:
   render:
     name: "Stage 2b — Render ${{ matrix.chunk.id }}"
     runs-on: ubuntu-latest
-    needs: [audio, bundle]
-    if: always() && needs.bundle.result == 'success'
+    needs: [bundle]
+    if: needs.bundle.result == 'success'
     strategy:
       fail-fast: false
       matrix:
@@ -123,8 +123,8 @@ jobs:
   assemble:
     name: "Stage 3 — Assemble Final Video"
     runs-on: ubuntu-latest
-    needs: [render]
-    if: always() && needs.render.result == 'success'
+    needs: [render, audio]
+    if: needs.render.result == 'success'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -179,3 +179,4 @@ jobs:
           YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
           YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
         run: python scripts/youtube_upload.py
+
