@@ -1,48 +1,45 @@
 #!/usr/bin/env python3
 """
-check_audio_sync.py  ─  AI Audio-Visual Sync Checker + Auto Re-renderer
-─────────────────────────────────────────────────────────────────────────
+check_audio_sync.py  —  AI Audio-Visual Sync Checker + Auto Re-renderer
+────────────────────────────────────────────────────────────────────────
 Reads public/audio/manifest.json (written by generate_audio.py).
-For each scene segment:
+
+For each scene:
   1. Measures actual audio duration via ffprobe
-  2. Compares to available visual window (frame_end - frame_start)
-  3. Scores: PASS / TRIM / SLOW / MISSING
-  4. If SLOW or MISSING → re-renders that scene segment via ElevenLabs
-     with adjusted speed or split text, until it fits the visual window.
-  5. Rebuilds narration_final.mp3 if any segment was re-rendered.
+  2. Compares to visual window (frame_end - frame_start) @ 60fps
+  3. Classifies: PASS / TRIM / SLOW / MISSING
+  4. TRIM  → hard-trim with ffmpeg (small overshoot ≤1.5s)
+  5. SLOW  → re-render with Kokoro at higher speed until it fits
+  6. MISSING → full re-render
+  7. Rebuilds narration_final.mp3 if anything changed
 
-Design goals:
-  • Concise (<300 lines) but robust
-  • No external ML model needed — pure heuristic + ElevenLabs speed control
-  • Idempotent: safe to re-run; skips already-approved scenes
-  • Writes sync_report.json for CI visibility
-
-Usage:
-    ELEVENLABS_API_KEY=xxx python scripts/check_audio_sync.py
+Designed to be small, fast, and robust — zero ML inference except
+for re-renders that actually need it.
 """
 
-import os, sys, json, math, time, subprocess
+import sys, json, math, subprocess
 from pathlib import Path
 
 FPS          = 60
-TOLERANCE_S  = 0.25   # ±250ms is acceptable overshoot
-VOICE_ID     = "TX3LPaxmHKxFdv7VOQHJ"
-MODEL_ID     = "eleven_multilingual_v2"
-API_KEY      = os.environ.get("ELEVENLABS_API_KEY", "")
+TOLERANCE_S  = 0.28          # ±280ms is acceptable
+VOICE_NAME   = "am_fenrir"
+SPEED_BASE   = 1.08
+LANG         = "hi"
+MODEL_PATH   = Path("/tmp/kokoro-v1.0.onnx")
+VOICES_PATH  = Path("/tmp/voices-v1.0.bin")
 MANIFEST     = Path("public/audio/manifest.json")
 SEG_DIR      = Path("public/audio/segments")
 REPORT_PATH  = Path("public/audio/sync_report.json")
-HEADERS      = {"xi-api-key": API_KEY, "Content-Type": "application/json"}
-
-MAX_RERENDERS = 3   # give up after 3 attempts per scene
+TOTAL_FRAMES = 2700
+MAX_RERENDERS = 3
 
 
 # ── UTILS ────────────────────────────────────────────────────────
 
 def duration_s(path: Path) -> float:
-    """Return audio duration in seconds via ffprobe."""
     r = subprocess.run(
-        ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+        ["ffprobe", "-v", "error",
+         "-show_entries", "format=duration",
          "-of", "default=noprint_wrappers=1:nokey=1", str(path)],
         capture_output=True, text=True
     )
@@ -52,54 +49,12 @@ def duration_s(path: Path) -> float:
         return 0.0
 
 
-def install_deps():
-    subprocess.run(
-        [sys.executable, "-m", "pip", "install", "pydub", "requests", "--quiet"],
-        check=True,
-    )
-
-
-def tts(text: str, out_path: Path, speed_factor: float = 1.0) -> bool:
-    """
-    Call ElevenLabs. speed_factor>1 = faster speech (stability tweak).
-    Returns True on success.
-    """
-    import requests
-
-    # ElevenLabs doesn't have a direct speed param, but stability↓ + style↑
-    # produces faster, more punchy delivery.  For >1.15x we split sentences.
-    stability = max(0.20, 0.38 - (speed_factor - 1.0) * 0.3)
-    style     = min(0.90, 0.55 + (speed_factor - 1.0) * 0.4)
-
-    payload = {
-        "text": text,
-        "model_id": MODEL_ID,
-        "voice_settings": {
-            "stability": stability,
-            "similarity_boost": 0.82,
-            "style": style,
-            "use_speaker_boost": True,
-        },
-    }
-    resp = requests.post(
-        f"https://api.elevenlabs.io/v1/text-to-speech/{VOICE_ID}",
-        headers=HEADERS,
-        json=payload,
-        stream=True,
-    )
-    if resp.status_code == 200:
-        out_path.write_bytes(resp.content)
-        return True
-    print(f"    ✗ ElevenLabs HTTP {resp.status_code}: {resp.text[:80]}")
-    return False
-
-
 def trim_audio(src: Path, max_s: float) -> bool:
-    """Hard-trim audio to max_s seconds using ffmpeg."""
-    tmp = src.with_suffix(".tmp.mp3")
+    tmp = src.with_suffix(".trim.mp3")
     r = subprocess.run(
-        ["ffmpeg", "-y", "-i", str(src), "-t", str(max_s),
-         "-acodec", "copy", str(tmp)],
+        ["ffmpeg", "-y", "-i", str(src),
+         "-t", str(max_s),
+         "-acodec", "libmp3lame", "-b:a", "192k", str(tmp)],
         capture_output=True
     )
     if r.returncode == 0:
@@ -108,105 +63,108 @@ def trim_audio(src: Path, max_s: float) -> bool:
     return False
 
 
-# ── SYNC CHECK ────────────────────────────────────────────────────
-
-def check_scene(scene: dict) -> dict:
-    """
-    Analyse one scene.  Returns result dict:
-      status: PASS | TRIM | SLOW | MISSING
-      audio_s, window_s, delta_s
-    """
-    seg_path = SEG_DIR / scene["seg_file"].split("/")[-1]
-    window_s = scene["time_end_s"] - scene["time_start_s"]
-
-    if not seg_path.exists() or seg_path.stat().st_size < 500:
-        return {"status": "MISSING", "audio_s": 0, "window_s": window_s, "delta_s": window_s}
-
-    audio_s = duration_s(seg_path)
-    delta_s = audio_s - window_s
-
-    if abs(delta_s) <= TOLERANCE_S:
-        status = "PASS"
-    elif delta_s > TOLERANCE_S:
-        # Audio longer than visual window
-        if delta_s <= 1.5:
-            status = "TRIM"   # small overshoot → just trim
-        else:
-            status = "SLOW"   # large overshoot → re-render faster
-    else:
-        status = "PASS"   # audio is shorter than window — that's fine (silence fills)
-
-    return {
-        "status": status,
-        "audio_s": round(audio_s, 3),
-        "window_s": round(window_s, 3),
-        "delta_s": round(delta_s, 3),
-    }
+def load_kokoro():
+    from kokoro_onnx import Kokoro
+    return Kokoro(str(MODEL_PATH), str(VOICES_PATH))
 
 
-def fix_scene(scene: dict, result: dict) -> bool:
-    """
-    Auto-fix a TRIM or SLOW scene.  Returns True if fixed.
-    """
-    seg_path = SEG_DIR / scene["seg_file"].split("/")[-1]
-    window_s = result["window_s"]
-
-    if result["status"] == "TRIM":
-        print(f"    ✂  Trimming {scene['id']} to {window_s:.2f}s")
-        return trim_audio(seg_path, window_s + TOLERANCE_S * 0.5)
-
-    if result["status"] in ("SLOW", "MISSING"):
-        # Calculate required speed-up factor
-        audio_s = result["audio_s"] if result["audio_s"] > 0 else window_s * 1.5
-        speed_factor = min(1.6, audio_s / max(window_s - 0.1, 0.1))
-        print(f"    ⚡  Re-rendering {scene['id']} at speed_factor={speed_factor:.2f}")
-
-        for attempt in range(1, MAX_RERENDERS + 1):
-            ok = tts(scene["text"], seg_path, speed_factor=speed_factor)
-            if not ok:
-                time.sleep(2)
-                continue
-            new_dur = duration_s(seg_path)
-            print(f"       attempt {attempt}: {new_dur:.2f}s (window={window_s:.2f}s)")
-            if new_dur <= window_s + TOLERANCE_S:
-                return True
-            # Still too long → nudge speed further
-            speed_factor = min(1.6, speed_factor * 1.12)
-            time.sleep(0.5)
-
-        # Last resort: trim what we have
-        print(f"    ✂  Last-resort trim: {scene['id']}")
-        return trim_audio(seg_path, window_s + TOLERANCE_S * 0.5)
-
-    return True
-
-
-def assemble():
-    """Re-assemble final MP3 from segments after fixes."""
+def rerender(kokoro, scene: dict, speed: float, out: Path) -> bool:
+    import soundfile as sf
     from pydub import AudioSegment
 
-    manifest = json.loads(MANIFEST.read_text())
-    total_ms = math.ceil(2700 / FPS * 1000)
-    timeline  = AudioSegment.silent(duration=total_ms, frame_rate=44100)
+    try:
+        samples, sr = kokoro.create(
+            scene["text"], voice=VOICE_NAME,
+            speed=speed, lang=LANG,
+        )
+        wav = out.with_suffix(".wav")
+        sf.write(str(wav), samples, sr)
+        seg = AudioSegment.from_wav(str(wav))
+        seg.export(str(out), format="mp3", bitrate="192k")
+        wav.unlink(missing_ok=True)
+        return True
+    except Exception as e:
+        print(f"    rerender error: {e}")
+        return False
 
-    for scene in manifest:
-        seg_path = SEG_DIR / scene["seg_file"].split("/")[-1]
-        if not seg_path.exists():
+
+# ── SCENE CHECK ───────────────────────────────────────────────────
+
+def check_scene(scene: dict) -> dict:
+    seg  = SEG_DIR / scene["seg_file"].split("/")[-1]
+    win  = scene["window_s"]
+
+    if not seg.exists() or seg.stat().st_size < 1000:
+        return {"status": "MISSING", "audio_s": 0.0, "window_s": win, "delta_s": win}
+
+    dur  = duration_s(seg)
+    delta = dur - win
+
+    if delta <= TOLERANCE_S:
+        status = "PASS"
+    elif delta <= 1.5:
+        status = "TRIM"
+    else:
+        status = "SLOW"
+
+    return {"status": status, "audio_s": round(dur, 3),
+            "window_s": round(win, 3), "delta_s": round(delta, 3)}
+
+
+def fix_scene(kokoro, scene: dict, result: dict) -> bool:
+    seg  = SEG_DIR / scene["seg_file"].split("/")[-1]
+    win  = result["window_s"]
+
+    if result["status"] == "TRIM":
+        print(f"    ✂  trimming to {win + TOLERANCE_S * 0.5:.2f}s")
+        return trim_audio(seg, win + TOLERANCE_S * 0.5)
+
+    # SLOW or MISSING — re-render at higher speed
+    audio_s = result["audio_s"] if result["audio_s"] > 0 else win * 1.5
+    speed   = min(1.65, SPEED_BASE * (audio_s / max(win - 0.1, 0.1)))
+
+    for attempt in range(1, MAX_RERENDERS + 1):
+        print(f"    ⚡  re-render attempt {attempt}  speed={speed:.2f}x")
+        ok = rerender(kokoro, scene, speed, seg)
+        if not ok:
+            speed = min(1.65, speed * 1.1)
             continue
-        seg      = AudioSegment.from_mp3(str(seg_path))
-        start_ms = int(scene["time_start_s"] * 1000)
-        timeline  = timeline.overlay(seg, position=start_ms)
+        new_dur = duration_s(seg)
+        print(f"       result: {new_dur:.2f}s  (window={win:.2f}s)")
+        if new_dur <= win + TOLERANCE_S:
+            return True
+        speed = min(1.65, speed * 1.12)
+
+    # Last resort: trim whatever we got
+    print(f"    ✂  last-resort trim")
+    return trim_audio(seg, win + TOLERANCE_S * 0.5)
+
+
+# ── REASSEMBLE ───────────────────────────────────────────────────
+
+def assemble(manifest: list):
+    from pydub import AudioSegment
+
+    total_s  = TOTAL_FRAMES / FPS
+    total_ms = int(total_s * 1000)
+    timeline = AudioSegment.silent(duration=total_ms, frame_rate=44100)
+
+    for sc in manifest:
+        seg = SEG_DIR / sc["seg_file"].split("/")[-1]
+        if not seg.exists():
+            continue
+        audio    = AudioSegment.from_mp3(str(seg))
+        start_ms = int(sc["time_start_s"] * 1000)
+        timeline = timeline.overlay(audio, position=start_ms)
 
     out = Path("public/audio/narration_final.mp3")
     timeline.export(str(out), format="mp3", bitrate="192k")
-    print(f"\n✓  Re-assembled: {out}  ({total_ms/1000:.0f}s)")
+    print(f"  ✓  narration_final.mp3 rebuilt  ({out.stat().st_size//1024}KB)")
 
 
 # ── MAIN ─────────────────────────────────────────────────────────
 
 def main():
-    install_deps()
-
     if not MANIFEST.exists():
         print("✗  manifest.json not found — run generate_audio.py first")
         sys.exit(1)
@@ -214,54 +172,62 @@ def main():
     manifest = json.loads(MANIFEST.read_text())
     report   = []
     needs_reassemble = False
+    kokoro   = None   # lazy-load only if re-renders needed
 
-    print("\n── Audio-Visual Sync Check ──\n")
+    print("\n══ Audio-Visual Sync Check ══\n")
+    ICONS = {"PASS": "✅", "TRIM": "✂ ", "SLOW": "⚡", "MISSING": "❌", "APPROVED": "✅"}
 
     for scene in manifest:
         if scene.get("approved"):
-            print(f"  ✓  {scene['id']} already approved — skip")
+            print(f"  ✅  {scene['id']}  already approved")
             report.append({**scene, "check": {"status": "APPROVED"}})
             continue
 
         result = check_scene(scene)
-        icon   = {"PASS": "✅", "TRIM": "✂ ", "SLOW": "⚡", "MISSING": "❌"}.get(result["status"], "?")
-        print(f"  {icon}  {scene['id']}: {result['status']:7s}  "
-              f"audio={result['audio_s']:.2f}s  window={result['window_s']:.2f}s  "
-              f"delta={result['delta_s']:+.2f}s")
+        icon   = ICONS.get(result["status"], "?")
+        print(
+            f"  {icon}  {scene['id']}:  {result['status']:<8}"
+            f"  audio={result['audio_s']:.2f}s"
+            f"  window={result['window_s']:.2f}s"
+            f"  delta={result['delta_s']:+.2f}s"
+        )
 
         if result["status"] == "PASS":
             scene["approved"] = True
         else:
-            fixed = fix_scene(scene, result)
+            # Lazy-load Kokoro model only when first re-render needed
+            if kokoro is None and result["status"] in ("SLOW", "MISSING"):
+                print("  → loading Kokoro model for re-render...")
+                kokoro = load_kokoro()
+
+            fixed = fix_scene(kokoro, scene, result)
             if fixed:
-                re_result = check_scene(scene)
-                print(f"       → after fix: {re_result['status']}  audio={re_result['audio_s']:.2f}s")
-                scene["approved"] = (re_result["status"] == "PASS")
-                needs_reassemble = True
+                recheck = check_scene(scene)
+                print(f"       after fix: {recheck['status']}  audio={recheck['audio_s']:.2f}s")
+                scene["approved"] = (recheck["status"] == "PASS")
             else:
-                print(f"       → ⚠  could not fix {scene['id']}")
+                print(f"       ⚠  could not fix {scene['id']}")
                 scene["approved"] = False
+
+            needs_reassemble = True
 
         report.append({**scene, "check": result})
 
-    # Save updated manifest
+    # Save updated manifest + report
     MANIFEST.write_text(json.dumps(manifest, ensure_ascii=False, indent=2))
-
-    # Save report
     REPORT_PATH.write_text(json.dumps(report, ensure_ascii=False, indent=2))
-    print(f"\n✓  sync_report.json → {REPORT_PATH}")
+    print(f"\n  ✓  sync_report.json saved")
 
     if needs_reassemble:
-        print("\n── Re-assembling narration_final.mp3 ──")
-        assemble()
+        print("\n── Rebuilding narration_final.mp3 ──")
+        assemble(manifest)
 
-    # Exit 1 if any scene unapproved (CI will catch it)
     unapproved = [s["id"] for s in manifest if not s.get("approved")]
     if unapproved:
-        print(f"\n⚠  Unapproved scenes: {unapproved}")
+        print(f"\n⚠  Unapproved after all fixes: {unapproved}")
         sys.exit(1)
 
-    print("\n✅  All scenes approved. Sync check passed.\n")
+    print("\n✅  All scenes approved — sync check passed.\n")
 
 
 if __name__ == "__main__":
