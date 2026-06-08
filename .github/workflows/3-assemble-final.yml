@@ -1,0 +1,72 @@
+name: "3 — Assemble Final Video"
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["2 — Render Video Chunks"]
+    types: [completed]
+
+jobs:
+  assemble:
+    name: Concatenate chunks → BoneConduction_FINAL.mp4
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install ffmpeg
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y ffmpeg
+
+      - name: Download all chunk artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: chunk-*
+          path: out/
+          merge-multiple: true
+
+      - name: List downloaded chunks
+        run: ls -lh out/
+
+      - name: Assemble final video
+        run: python scripts/assemble_video.py
+
+      - name: Show final video info
+        run: |
+          ffprobe -v error \
+            -show_entries format=duration,size,bit_rate \
+            -show_entries stream=codec_name,width,height,r_frame_rate \
+            -of json out/BoneConduction_FINAL.mp4
+
+      - name: Upload final video
+        uses: actions/upload-artifact@v4
+        with:
+          name: BoneConduction-FINAL
+          path: out/BoneConduction_FINAL.mp4
+          retention-days: 30
+
+      - name: Upload build metadata
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-meta
+          path: out/build_meta.json
+          retention-days: 30
+
+      # ── Optional: upload to Google Drive ─────────────────────
+      # Uncomment and add GDRIVE_* secrets to enable auto-upload
+      # - name: Upload to Google Drive
+      #   run: |
+      #     pip install google-auth google-api-python-client
+      #     python scripts/upload_to_drive.py out/BoneConduction_FINAL.mp4
+      #   env:
+      #     GDRIVE_TOKEN: ${{ secrets.GDRIVE_REFRESH_TOKEN }}
+      #     GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
+      #     GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
