@@ -1,0 +1,27 @@
+{
+  "name": "bone-conduction-animation",
+  "version": "1.0.0",
+  "description": "Hindi Science Animation — Bone Conduction | Remotion + ElevenLabs",
+  "scripts": {
+    "start": "remotion studio",
+    "build": "remotion render BoneConduction out/BoneConduction_FULL.mp4",
+    "render:chunks": "node scripts/render_all_chunks.mjs",
+    "preview": "remotion preview BoneConduction",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "remotion": "^4.0.0",
+    "react": "^18.0.0",
+    "react-dom": "^18.0.0"
+  },
+  "devDependencies": {
+    "@remotion/cli": "^4.0.0",
+    "@remotion/renderer": "^4.0.0",
+    "@types/react": "^18.0.0",
+    "@types/react-dom": "^18.0.0",
+    "typescript": "^5.0.0"
+  },
+  "remotion": {
+    "entryPoint": "src/index.ts"
+  }
+}
