@@ -76,7 +76,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: remotion-bundle
-          path: out/bundle.js
+          path: out/
 
   render:
     name: "Stage 2b — Render ${{ matrix.chunk.id }}"
@@ -179,4 +179,5 @@ jobs:
           YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
           YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
         run: python scripts/youtube_upload.py
+
 
