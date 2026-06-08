@@ -1,0 +1,13 @@
+node_modules/
+dist/
+out/
+*.mp4
+*.mp3
+*.wav
+public/audio/segments/
+public/audio/narration_final.mp3
+public/audio/manifest.json
+public/audio/sync_report.json
+.DS_Store
+.env
+*.local
