@@ -1,0 +1,94 @@
+name: "2 — Render Video Chunks"
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["1 — Generate & Sync-Check Audio"]
+    types: [completed]
+
+jobs:
+  # ── Download audio from previous workflow ──────────────────────
+  setup:
+    name: Prepare audio assets
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    outputs:
+      audio-ready: ${{ steps.check.outputs.ready }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download audio artifacts
+        uses: dawidd6/action-download-artifact@v6
+        continue-on-error: true
+        with:
+          workflow: 1-generate-audio.yml
+          name: audio-assets
+          path: public/audio/
+      - name: Check audio ready
+        id: check
+        run: |
+          if [ -f "public/audio/narration_final.mp3" ]; then
+            echo "ready=true" >> $GITHUB_OUTPUT
+          else
+            echo "ready=false" >> $GITHUB_OUTPUT
+            echo "⚠ narration_final.mp3 not found — render will proceed without audio (add manually)"
+          fi
+
+  # ── Render each chunk in parallel ─────────────────────────────
+  render:
+    name: Render ${{ matrix.chunk.id }}
+    runs-on: ubuntu-latest
+    needs: setup
+    strategy:
+      fail-fast: false
+      matrix:
+        chunk:
+          - { id: "chunk_01_hook",      compositionId: "chunk_01_hook" }
+          - { id: "chunk_02_setup",     compositionId: "chunk_02_setup" }
+          - { id: "chunk_03_mechanism", compositionId: "chunk_03_mechanism" }
+          - { id: "chunk_04_proof",     compositionId: "chunk_04_proof" }
+          - { id: "chunk_05_twist",     compositionId: "chunk_05_twist" }
+          - { id: "chunk_06_outro",     compositionId: "chunk_06_outro" }
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Download audio assets
+        uses: dawidd6/action-download-artifact@v6
+        continue-on-error: true
+        with:
+          workflow: 1-generate-audio.yml
+          name: audio-assets
+          path: public/audio/
+
+      - name: Install Chrome for Remotion
+        run: npx remotion browser ensure
+
+      - name: Render chunk
+        run: |
+          mkdir -p out
+          npx remotion render \
+            --composition=${{ matrix.chunk.compositionId }} \
+            --output=out/${{ matrix.chunk.id }}.mp4 \
+            --codec=h264 \
+            --crf=18 \
+            --jpeg-quality=95 \
+            --concurrency=2
+        env:
+          REMOTION_ALLOW_EVAL: true
+
+      - name: Upload chunk artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: chunk-${{ matrix.chunk.id }}
+          path: out/${{ matrix.chunk.id }}.mp4
+          retention-days: 7
