@@ -36,7 +36,7 @@ const SUBS = [
   { f:535,  t:760,  h:'पहला रास्ता — हवा के ज़रिए।',                         r:'Pahla raasta — hawa ke zariye.',                       s:'b' },
   { f:790,  t:1060, h:'दूसरा — तुम्हारी खोपड़ी की हड्डियों के ज़रिए।',      r:'Doosra — tumhari khopdi ki haddiyon ke zariye.',       s:'b' },
   { f:1095, t:1360, h:'हड्डियाँ low frequency को boost करती हैं।',           r:'Haddiyan low frequency ko boost karti hain.',          s:'b' },
-  { f:1390, t:1640, h:'Microphone सिर्फ हवा capture करता है।',               r:'Microphone sirf hawa capture karta hai.',              s:'n' },
+  { f:1390, t:1640, h:'Microphone सिर्फ हवा capture karta hai.',               r:'Microphone sirf hawa capture karta hai.',              s:'n' },
   { f:1795, t:1990, h:'Beethoven... पूरी तरह बहरे थे।',                       r:'Beethoven... poori tarah bahre the.',                  s:'n' },
   { f:2020, t:2290, h:'पर उन्होंने piano को छड़ी से छूकर music सुना।',       r:'Par unhone piano ko chhaddi se chhukar music suna.',   s:'n' },
   { f:2330, t:2540, h:'वो भी — bone conduction था।',                          r:'Wo bhi — bone conduction tha.',                       s:'b' },
@@ -82,7 +82,7 @@ function bezierPoints(
   return pts;
 }
 
-// ── PRE-CALCULATED CONSTANTS (Optimization) ───────────────────────
+// ── PRE-CALCULATED CONSTANTS (Performance Optimization) ───────────
 const STARS = Array.from({length:140},(_,i)=>({
   x:sr(i*4+1)*W, y:sr(i*4+2)*H,
   r:0.5+sr(i*4+3)*2.2, sp:0.3+sr(i*4+4)*1.8, op:0.2+sr(i*4)*0.6,
@@ -138,14 +138,14 @@ const GlobalDefs:React.FC=()=>(
 
 // ── COMPONENTS ────────────────────────────────────────────────────
 const Background:React.FC<{frame:number}>=({frame})=>{
-  const drift=interpolate(frame,[0,T.TOTAL],[0,50],{extrapolateRight:'clamp'});
+  const drift=interpolate(frame,[0,T.TOTAL],[0,80],{extrapolateRight:'clamp'});
   return(
     <g>
       <rect width={W} height={H} fill={BG}/>
       <rect width={W} height={H} fill="url(#nebula)" transform={`translate(0,${-drift})`}/>
       {STARS.map((s,i)=>(
         <circle key={i} cx={s.x} cy={s.y} r={s.r} fill={WHITE}
-          opacity={s.op*(0.6+0.4*Math.sin(frame*s.sp*0.016+i*2.3))}/>
+          opacity={s.op*(0.6+0.4*Math.sin(frame*s.sp*0.032+i*2.3))}/>
       ))}
       <rect width={W} height={H} fill="url(#scanlines)"/>
       <rect width={W} height={H} fill="url(#vig)"/>
@@ -155,11 +155,11 @@ const Background:React.FC<{frame:number}>=({frame})=>{
 
 const SoundParticles:React.FC<{frame:number}>=({frame})=>{
   return(
-    <g opacity={0.18}>
+    <g opacity={0.22}>
       {SOUND_PTS.map((p,i)=>{
-        const px=(p.x+p.spx*frame)%W;
-        const py=(p.y+p.spy*frame+Math.sin(frame*0.02+p.ph)*30)%H;
-        const r=3+Math.sin(frame*0.04+p.ph)*2;
+        const px=(p.x+p.spx*frame*1.2)%W;
+        const py=(p.y+p.spy*frame*1.2+Math.sin(frame*0.04+p.ph)*40)%H;
+        const r=3+Math.sin(frame*0.06+p.ph)*2.5;
         return(<circle key={i} cx={px} cy={py} r={r} fill={p.col}/>);
       })}
     </g>
@@ -276,7 +276,7 @@ const SceneHook:React.FC<{frame:number}>=({frame})=>{
   const w1=mkW(0),w2=mkW(18),w3=mkW(36);
   const wfPoints=Array.from({length:80},(_,i)=>{
     const t=i/79, x=80+t*(W-160);
-    const wave=Math.sin(t*Math.PI*6-lf*0.15)*40*Math.sin(t*Math.PI)*Math.min(1,lf/40);
+    const wave=Math.sin(t*Math.PI*6-lf*0.25)*40*Math.sin(t*Math.PI)*Math.min(1,lf/40);
     return `${x},${H*0.42+wave}`;
   }).join(' ');
   return(
@@ -338,13 +338,13 @@ const SceneSetup:React.FC<{frame:number}>=({frame})=>{
       </g>
       <g opacity={airP}>
         {drawPath(AIR_PTS,airP,TEAL)}
-        <WavePath pts={AIR_PTS} frame={frame} color={TEAL} freq={3} amp={18} speed={2.5} opacity={0.7} strokeWidth={3}/>
+        <WavePath pts={AIR_PTS} frame={frame} color={TEAL} freq={3} amp={18} speed={3.5} opacity={0.7} strokeWidth={3}/>
         <text x={CX} y={490} textAnchor="middle" fontFamily="'Arial',sans-serif"
           fontSize={32} fill={TEAL} fontWeight="700">🌊 हवा (Air)</text>
       </g>
       <g opacity={boneP}>
         {drawPath(BONE_PTS,boneP,GOLD)}
-        <WavePath pts={BONE_PTS} frame={frame} color={GOLD} freq={4} amp={10} speed={3} opacity={0.8} strokeWidth={3}/>
+        <WavePath pts={BONE_PTS} frame={frame} color={GOLD} freq={4} amp={10} speed={4.2} opacity={0.8} strokeWidth={3}/>
         <text x={CX} y={840} textAnchor="middle" fontFamily="'Arial',sans-serif"
           fontSize={32} fill={GOLD} fontWeight="700">🦴 हड्डी (Bone)</text>
       </g>
@@ -377,7 +377,7 @@ const SceneMechanism:React.FC<{frame:number}>=({frame})=>{
         <rect x={100} y={390} width={880} height={280} rx={16}
           fill={BG2} fillOpacity={0.7} stroke={TEAL} strokeWidth={1.5} strokeOpacity={0.4}/>
         {Array.from({length:14}).map((_,i)=>{
-          const h=(60+sr(i*2)*120)*(0.4+0.6*Math.abs(Math.sin(lf*0.12+i*0.7)));
+          const h=(60+sr(i*2)*120)*(0.4+0.6*Math.abs(Math.sin(lf*0.22+i*0.7)));
           const col=i%3===0?TEAL:i%3===1?BLUE:PURP;
           return <rect key={i} x={120+i*62} y={630-h} width={46} height={h} rx={6} fill={col} fillOpacity={0.85}/>;
         })}
@@ -388,7 +388,7 @@ const SceneMechanism:React.FC<{frame:number}>=({frame})=>{
         <rect x={100} y={920} width={880} height={280} rx={16}
           fill={BG2} fillOpacity={0.7} stroke={GOLD} strokeWidth={1.5} strokeOpacity={0.4}/>
         {Array.from({length:14}).map((_,i)=>{
-          const h=(80+sr(i*2+1)*100)*(i<5?1.6:i<8?1.1:0.7)*(0.4+0.6*Math.abs(Math.sin(lf*0.12+i*0.7+2)))*boneVibeAmp;
+          const h=(80+sr(i*2+1)*100)*(i<5?1.6:i<8?1.1:0.7)*(0.4+0.6*Math.abs(Math.sin(lf*0.22+i*0.7+2)))*boneVibeAmp;
           const col=i<5?GOLD:i<8?AMBER:CORAL;
           return <rect key={i} x={120+i*62} y={1160-h} width={46} height={h} rx={6} fill={col} fillOpacity={0.85}/>;
         })}
@@ -410,7 +410,7 @@ const SceneProof:React.FC<{frame:number}>=({frame})=>{
   const drawScope=(yOff:number,color:string,ampM:number,freqM:number)=>{
     const pts=Array.from({length:120},(_,i)=>{
       const t=i/119, x=scopeX+t*scopeW;
-      const y=yOff+scopeH/2+Math.sin(t*Math.PI*freqM*2-lf*0.14)*ampM*90 + Math.sin(t*Math.PI*freqM*4-lf*0.22)*ampM*22;
+      const y=yOff+scopeH/2+Math.sin(t*Math.PI*freqM*2-lf*0.28)*ampM*90 + Math.sin(t*Math.PI*freqM*4-lf*0.42)*ampM*22;
       return `${x},${y}`;
     }).join(' ');
     return(
@@ -451,8 +451,8 @@ const SceneTwist:React.FC<{frame:number}>=({frame})=>{
   return(
     <g opacity={op}>
       {NOTE_PTS.map((n,i)=>(
-        <text key={i} x={(n.x+n.sp*lf)%W} y={(n.y-lf*0.4+Math.sin(lf*0.03+n.ph)*20)%H}
-          textAnchor="middle" fontFamily="serif" fontSize={28} fill={n.col} opacity={0.22}>{n.note}</text>
+        <text key={i} x={(n.x+n.sp*lf*1.5)%W} y={(n.y-lf*0.6+Math.sin(lf*0.04+n.ph)*25)%H}
+          textAnchor="middle" fontFamily="serif" fontSize={28} fill={n.col} opacity={0.28}>{n.note}</text>
       ))}
       <g opacity={interpolate(lf,[0,30],[0,1],{extrapolateRight:'clamp'})}>
         <text x={CX} y={260} textAnchor="middle" fontFamily="'Impact','Arial Black',sans-serif" fontSize={80} fill={GOLD}>Beethoven</text>
