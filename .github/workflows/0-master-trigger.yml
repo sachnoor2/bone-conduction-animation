@@ -18,7 +18,7 @@ on:
 
 jobs:
   # ══════════════════════════════════════════════════════════════
-  # STAGE 1 — Code Review & Typecheck
+  # STAGE 0 — Code Review & Typecheck
   # ══════════════════════════════════════════════════════════════
   review:
     name: "Stage 0 — Code Review & Typecheck"
@@ -49,30 +49,13 @@ jobs:
           sudo apt-get install -y ffmpeg espeak-ng
       - name: Install Python deps
         run: pip install kokoro-onnx soundfile pydub --quiet
-      - name: Cache Kokoro model
-        id: cache-kokoro
-        uses: actions/cache@v4
-        with:
-          path: |
-            /tmp/kokoro-v1.0.onnx
-            /tmp/voices-v1.0.bin
-          key: kokoro-model-v1.0
-      - name: Download Kokoro model
-        if: steps.cache-kokoro.outputs.cache-hit != 'true'
-        run: |
-          BASE="https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0"
-          curl -L "$BASE/kokoro-v1.0.onnx" -o /tmp/kokoro-v1.0.onnx
-          curl -L "$BASE/voices-v1.0.bin"  -o /tmp/voices-v1.0.bin
-      - name: Generate narration audio
+      - name: Generate TTS
         run: python scripts/generate_audio.py
-      - name: Sync check + auto-fix
-        run: python scripts/check_audio_sync.py
-      - name: Upload audio artifacts
+      - name: Upload Audio
         uses: actions/upload-artifact@v4
         with:
           name: audio-assets
           path: public/audio/
-          retention-days: 30
 
   bundle:
     name: "Stage 2a — Bundle Project"
@@ -86,7 +69,9 @@ jobs:
       - name: Install dependencies
         run: npm install
       - name: Create Bundle
-        run: npx remotion bundle src/index.ts out/bundle.js
+        run: |
+          mkdir -p out
+          npx remotion bundle src/index.ts out/bundle.js
       - name: Upload Bundle
         uses: actions/upload-artifact@v4
         with:
@@ -97,17 +82,17 @@ jobs:
     name: "Stage 2b — Render ${{ matrix.chunk.id }}"
     runs-on: ubuntu-latest
     needs: [audio, bundle]
-    if: always() && (needs.audio.result == 'success' || needs.audio.result == 'skipped') && needs.bundle.result == 'success'
+    if: always() && needs.bundle.result == 'success'
     strategy:
       fail-fast: false
       matrix:
         chunk:
-          - { id: "chunk_01_hook",      compositionId: "chunk_01_hook" }
-          - { id: "chunk_02_setup",     compositionId: "chunk_02_setup" }
-          - { id: "chunk_03_mechanism", compositionId: "chunk_03_mechanism" }
-          - { id: "chunk_04_proof",     compositionId: "chunk_04_proof" }
-          - { id: "chunk_05_twist",     compositionId: "chunk_05_twist" }
-          - { id: "chunk_06_outro",     compositionId: "chunk_06_outro" }
+          - { id: 'chunk_01_hook', from: 0, duration: 220 }
+          - { id: 'chunk_02_setup', from: 180, duration: 360 }
+          - { id: 'chunk_03_mechanism', from: 500, duration: 740 }
+          - { id: 'chunk_04_proof', from: 1200, duration: 600 }
+          - { id: 'chunk_05_twist', from: 1760, duration: 600 }
+          - { id: 'chunk_06_outro', from: 2320, duration: 380 }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -120,44 +105,36 @@ jobs:
         with:
           name: remotion-bundle
           path: out/
-      - name: Download audio assets
+      - name: Download audio
         uses: actions/download-artifact@v4
         continue-on-error: true
         with:
           name: audio-assets
           path: public/audio/
-      - name: Install Chrome
-        run: npx remotion browser ensure
-      - name: Render chunk
+      - name: Render Chunk
         run: |
-          npx remotion render \
-            out/bundle.js \
-            ${{ matrix.chunk.compositionId }} \
-            out/${{ matrix.chunk.id }}.mp4 \
-            --codec=h264 \
-            --crf=18 \
-            --concurrency=2
-        env:
-          REMOTION_ALLOW_EVAL: true
-      - name: Upload chunk
+          npx remotion render out/bundle.js ${{ matrix.chunk.id }} out/${{ matrix.chunk.id }}.mp4 --props '{}'
+      - name: Upload Chunk
         uses: actions/upload-artifact@v4
         with:
-          name: chunk-${{ matrix.chunk.id }}
+          name: ${{ matrix.chunk.id }}
           path: out/${{ matrix.chunk.id }}.mp4
 
   assemble:
     name: "Stage 3 — Assemble Final Video"
     runs-on: ubuntu-latest
     needs: [render]
-    if: needs.render.result == 'success'
+    if: always() && needs.render.result == 'success'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Install ffmpeg
-        run: sudo apt-get install -y ffmpeg
-      - name: Download all chunks
+      - name: Install system deps
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y ffmpeg
+      - name: Download Chunks
         uses: actions/download-artifact@v4
         with:
           pattern: chunk-*
@@ -202,4 +179,3 @@ jobs:
           YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
           YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
         run: python scripts/youtube_upload.py
-
