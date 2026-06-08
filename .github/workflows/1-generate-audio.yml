@@ -1,0 +1,59 @@
+name: "1 — Generate & Sync-Check Audio"
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "scripts/generate_audio.py"
+      - "scripts/check_audio_sync.py"
+
+jobs:
+  audio:
+    name: ElevenLabs TTS + AI Sync Check
+    runs-on: ubuntu-latest
+    # No timeout — model download + TTS can be slow
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install ffmpeg
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y ffmpeg
+
+      - name: Install Python deps
+        run: pip install pydub requests
+
+      # ── Step 1: Generate per-scene audio ─────────────────────────
+      - name: Generate audio segments (ElevenLabs)
+        env:
+          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+        run: python scripts/generate_audio.py
+
+      # ── Step 2: AI sync check — re-renders bad scenes automatically
+      - name: AI Audio-Visual Sync Check
+        env:
+          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+        run: python scripts/check_audio_sync.py
+
+      # ── Upload audio artifacts ─────────────────────────────────
+      - name: Upload audio artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: audio-assets
+          path: public/audio/
+          retention-days: 30
+
+      - name: Upload sync report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sync-report
+          path: public/audio/sync_report.json
+          retention-days: 14
