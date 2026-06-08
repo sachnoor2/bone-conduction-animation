@@ -17,9 +17,26 @@ on:
         options: ["true", "false"]
 
 jobs:
+  # ══════════════════════════════════════════════════════════════
+  # STAGE 1 — Code Review & Typecheck
+  # ══════════════════════════════════════════════════════════════
+  review:
+    name: "Stage 0 — Code Review & Typecheck"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install dependencies
+        run: npm install
+      - name: Typecheck
+        run: npm run typecheck
+
   audio:
     name: "Stage 1 — Generate Audio"
     runs-on: ubuntu-latest
+    needs: [review]
     if: ${{ inputs.skip_audio != 'true' }}
     steps:
       - uses: actions/checkout@v4
@@ -60,6 +77,7 @@ jobs:
   bundle:
     name: "Stage 2a — Bundle Project"
     runs-on: ubuntu-latest
+    needs: [review]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -118,7 +136,7 @@ jobs:
             out/${{ matrix.chunk.id }}.mp4 \
             --codec=h264 \
             --crf=18 \
-            --concurrency=1
+            --concurrency=2
         env:
           REMOTION_ALLOW_EVAL: true
       - name: Upload chunk
