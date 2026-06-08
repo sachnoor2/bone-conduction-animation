@@ -76,7 +76,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: remotion-bundle
-          path: out/bundle.js
+          path: out/bundle.jsbundle.js
 
   render:
     name: "Stage 2b — Render ${{ matrix.chunk.id }}"
@@ -104,7 +104,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: remotion-bundle
-          path: out/bundle.js
+          path: out/bundle.jsbundle.js
       - name: Download audio
         uses: actions/download-artifact@v4
         continue-on-error: true
@@ -179,6 +179,7 @@ jobs:
           YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
           YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
         run: python scripts/youtube_upload.py
+
 
 
 
