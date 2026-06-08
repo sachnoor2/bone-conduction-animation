@@ -1,15 +1,5 @@
 name: "0 — MASTER TRIGGER (Full Pipeline + YouTube Upload)"
 
-# ─────────────────────────────────────────────────────────────────
-# ONE-CLICK trigger for the ENTIRE pipeline:
-#   Step 1 → Kokoro TTS audio generation + sync check
-#   Step 2 → 6 parallel Remotion chunk renders
-#   Step 3 → FFmpeg assembly into final MP4
-#   Step 4 → Auto-upload final video to YouTube
-#
-# Just go to: Actions → "0 — MASTER TRIGGER" → Run workflow
-# ─────────────────────────────────────────────────────────────────
-
 on:
   workflow_dispatch:
     inputs:
@@ -27,29 +17,21 @@ on:
         options: ["true", "false"]
 
 jobs:
-  # ══════════════════════════════════════════════════════════════
-  # STAGE 1 — Generate Audio (Kokoro am_fenrir)
-  # ══════════════════════════════════════════════════════════════
   audio:
     name: "Stage 1 — Generate Audio"
     runs-on: ubuntu-latest
     if: ${{ inputs.skip_audio != 'true' }}
-
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-
       - name: Install system deps
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y ffmpeg espeak-ng
-
       - name: Install Python deps
         run: pip install kokoro-onnx soundfile pydub --quiet
-
       - name: Cache Kokoro model
         id: cache-kokoro
         uses: actions/cache@v4
@@ -58,20 +40,16 @@ jobs:
             /tmp/kokoro-v1.0.onnx
             /tmp/voices-v1.0.bin
           key: kokoro-model-v1.0
-
-      - name: Download Kokoro model (if not cached)
+      - name: Download Kokoro model
         if: steps.cache-kokoro.outputs.cache-hit != 'true'
         run: |
           BASE="https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0"
           curl -L "$BASE/kokoro-v1.0.onnx" -o /tmp/kokoro-v1.0.onnx
           curl -L "$BASE/voices-v1.0.bin"  -o /tmp/voices-v1.0.bin
-
       - name: Generate narration audio
         run: python scripts/generate_audio.py
-
       - name: Sync check + auto-fix
         run: python scripts/check_audio_sync.py
-
       - name: Upload audio artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -79,14 +57,29 @@ jobs:
           path: public/audio/
           retention-days: 30
 
-  # ══════════════════════════════════════════════════════════════
-  # STAGE 2 — Render 6 chunks in parallel
-  # ══════════════════════════════════════════════════════════════
-  render:
-    name: "Stage 2 — Render ${{ matrix.chunk.id }}"
+  bundle:
+    name: "Stage 2a — Bundle Project"
     runs-on: ubuntu-latest
-    needs: [audio]
-    if: always() && (needs.audio.result == 'success' || needs.audio.result == 'skipped')
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install dependencies
+        run: npm install
+      - name: Create Bundle
+        run: npx remotion bundle src/index.ts out/bundle.js
+      - name: Upload Bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: remotion-bundle
+          path: out/bundle.js
+
+  render:
+    name: "Stage 2b — Render ${{ matrix.chunk.id }}"
+    runs-on: ubuntu-latest
+    needs: [audio, bundle]
+    if: always() && (needs.audio.result == 'success' || needs.audio.result == 'skipped') && needs.bundle.result == 'success'
     strategy:
       fail-fast: false
       matrix:
@@ -97,118 +90,94 @@ jobs:
           - { id: "chunk_04_proof",     compositionId: "chunk_04_proof" }
           - { id: "chunk_05_twist",     compositionId: "chunk_05_twist" }
           - { id: "chunk_06_outro",     compositionId: "chunk_06_outro" }
-
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-
       - name: Install dependencies
         run: npm install
-
+      - name: Download Bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: remotion-bundle
+          path: out/
       - name: Download audio assets
         uses: actions/download-artifact@v4
         continue-on-error: true
         with:
           name: audio-assets
           path: public/audio/
-
-      - name: Install Chrome for Remotion
+      - name: Install Chrome
         run: npx remotion browser ensure
-
       - name: Render chunk
         run: |
-          mkdir -p out
           npx remotion render \
-            --composition=${{ matrix.chunk.compositionId }} \
-            --output=out/${{ matrix.chunk.id }}.mp4 \
+            out/bundle.js \
+            ${{ matrix.chunk.compositionId }} \
+            out/${{ matrix.chunk.id }}.mp4 \
             --codec=h264 \
             --crf=18 \
-            --jpeg-quality=95 \
             --concurrency=2
         env:
           REMOTION_ALLOW_EVAL: true
-
       - name: Upload chunk
         uses: actions/upload-artifact@v4
         with:
           name: chunk-${{ matrix.chunk.id }}
           path: out/${{ matrix.chunk.id }}.mp4
-          retention-days: 7
 
-  # ══════════════════════════════════════════════════════════════
-  # STAGE 3 — Assemble final MP4 with FFmpeg
-  # ══════════════════════════════════════════════════════════════
   assemble:
     name: "Stage 3 — Assemble Final Video"
     runs-on: ubuntu-latest
     needs: [render]
     if: needs.render.result == 'success'
-
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-
       - name: Install ffmpeg
         run: sudo apt-get install -y ffmpeg
-
       - name: Download all chunks
         uses: actions/download-artifact@v4
         with:
           pattern: chunk-*
           path: out/
           merge-multiple: true
-
       - name: Download audio
         uses: actions/download-artifact@v4
         continue-on-error: true
         with:
           name: audio-assets
           path: public/audio/
-
       - name: Install Python deps
         run: pip install pydub --quiet
-
       - name: Assemble final video
         run: python scripts/assemble_video.py
-
       - name: Upload final video
         uses: actions/upload-artifact@v4
         with:
           name: BoneConduction-FINAL
           path: out/BoneConduction_FINAL.mp4
-          retention-days: 30
 
-  # ══════════════════════════════════════════════════════════════
-  # STAGE 4 — Upload to YouTube
-  # ══════════════════════════════════════════════════════════════
   youtube:
     name: "Stage 4 — Upload to YouTube"
     runs-on: ubuntu-latest
     needs: [assemble]
     if: needs.assemble.result == 'success' && inputs.upload_to_youtube == 'true'
-
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-
       - name: Install Python deps
         run: pip install google-api-python-client google-auth-httplib2 google-auth-oauthlib requests --quiet
-
       - name: Download final video
         uses: actions/download-artifact@v4
         with:
           name: BoneConduction-FINAL
           path: out/
-
       - name: Upload to YouTube
         env:
           YT_CLIENT_ID:     ${{ secrets.YT_CLIENT_ID }}
