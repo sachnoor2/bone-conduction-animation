@@ -118,7 +118,7 @@ jobs:
             out/${{ matrix.chunk.id }}.mp4 \
             --codec=h264 \
             --crf=18 \
-            --concurrency=2
+            --concurrency=1
         env:
           REMOTION_ALLOW_EVAL: true
       - name: Upload chunk
