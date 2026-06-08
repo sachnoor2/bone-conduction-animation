@@ -82,6 +82,27 @@ function bezierPoints(
   return pts;
 }
 
+// ── PRE-CALCULATED CONSTANTS (Optimization) ───────────────────────
+const STARS = Array.from({length:140},(_,i)=>({
+  x:sr(i*4+1)*W, y:sr(i*4+2)*H,
+  r:0.5+sr(i*4+3)*2.2, sp:0.3+sr(i*4+4)*1.8, op:0.2+sr(i*4)*0.6,
+}));
+
+const SOUND_PTS = Array.from({length:18},(_,i)=>({
+  x:80+sr(i*3+1)*(W-160), y:200+sr(i*3+2)*(H-400),
+  spx:(sr(i*3+3)-0.5)*0.6, spy:(sr(i*3)-0.5)*0.4,
+  ph:sr(i*3+2)*Math.PI*2, col:[TEAL,GOLD,PURP,BLUE][i%4],
+}));
+
+const AIR_PTS = bezierPoints({x:CX-300,y:700},{x:CX-200,y:520},{x:CX+200,y:520},{x:CX+280,y:680},60);
+const BONE_PTS = bezierPoints({x:CX-180,y:740},{x:CX-80,y:760},{x:CX+80,y:760},{x:CX+175,y:720},60);
+
+const NOTE_PTS = Array.from({length:12},(_,i)=>({
+  x:100+sr(i*3+1)*(W-200), y:300+sr(i*3+2)*1200,
+  sp:(sr(i*3+3)-0.5)*1.2, ph:sr(i*3)*Math.PI*2,
+  note:['♩','♪','♫','♬'][i%4], col:[GOLD,PURP,TEAL,CORAL][i%4],
+}));
+
 // ── GLOBAL DEFS ───────────────────────────────────────────────────
 const GlobalDefs:React.FC=()=>(
   <defs>
@@ -115,18 +136,14 @@ const GlobalDefs:React.FC=()=>(
   </defs>
 );
 
-// ── BACKGROUND ────────────────────────────────────────────────────
+// ── COMPONENTS ────────────────────────────────────────────────────
 const Background:React.FC<{frame:number}>=({frame})=>{
-  const stars=Array.from({length:140},(_,i)=>({
-    x:sr(i*4+1)*W, y:sr(i*4+2)*H,
-    r:0.5+sr(i*4+3)*2.2, sp:0.3+sr(i*4+4)*1.8, op:0.2+sr(i*4)*0.6,
-  }));
   const drift=interpolate(frame,[0,T.TOTAL],[0,50],{extrapolateRight:'clamp'});
   return(
     <g>
       <rect width={W} height={H} fill={BG}/>
       <rect width={W} height={H} fill="url(#nebula)" transform={`translate(0,${-drift})`}/>
-      {stars.map((s,i)=>(
+      {STARS.map((s,i)=>(
         <circle key={i} cx={s.x} cy={s.y} r={s.r} fill={WHITE}
           opacity={s.op*(0.6+0.4*Math.sin(frame*s.sp*0.016+i*2.3))}/>
       ))}
@@ -137,14 +154,9 @@ const Background:React.FC<{frame:number}>=({frame})=>{
 };
 
 const SoundParticles:React.FC<{frame:number}>=({frame})=>{
-  const pts=Array.from({length:18},(_,i)=>({
-    x:80+sr(i*3+1)*(W-160), y:200+sr(i*3+2)*(H-400),
-    spx:(sr(i*3+3)-0.5)*0.6, spy:(sr(i*3)-0.5)*0.4,
-    ph:sr(i*3+2)*Math.PI*2, col:[TEAL,GOLD,PURP,BLUE][i%4],
-  }));
   return(
     <g opacity={0.18}>
-      {pts.map((p,i)=>{
+      {SOUND_PTS.map((p,i)=>{
         const px=(p.x+p.spx*frame)%W;
         const py=(p.y+p.spy*frame+Math.sin(frame*0.02+p.ph)*30)%H;
         const r=3+Math.sin(frame*0.04+p.ph)*2;
@@ -254,7 +266,7 @@ const WavePath:React.FC<{
     strokeLinecap="round" opacity={opacity}/>;
 };
 
-// ── SCENE 1: HOOK ─────────────────────────────────────────────────
+// ── SCENES ────────────────────────────────────────────────────────
 const SceneHook:React.FC<{frame:number}>=({frame})=>{
   const lf=frame-T.HOOK_S; if(lf<0)return null;
   const dur=T.HOOK_E-T.HOOK_S;
@@ -303,16 +315,12 @@ const SceneHook:React.FC<{frame:number}>=({frame})=>{
   );
 };
 
-// ── SCENE 2: SETUP ────────────────────────────────────────────────
 const SceneSetup:React.FC<{frame:number}>=({frame})=>{
   const lf=frame-T.SET_S; if(lf<0)return null;
   const dur=T.SET_E-T.SET_S;
   const op=Math.min(interpolate(lf,[0,25],[0,1],{extrapolateRight:'clamp'}),
                     interpolate(lf,[dur-30,dur],[1,0],{extrapolateRight:'clamp'}));
   const headP=cl(lf/80,0,1);
-  const {dx,dy}=shake(frame);
-  const airPts=bezierPoints({x:CX-300,y:700},{x:CX-200,y:520},{x:CX+200,y:520},{x:CX+280,y:680},60);
-  const bonePts=bezierPoints({x:CX-180,y:740},{x:CX-80,y:760},{x:CX+80,y:760},{x:CX+175,y:720},60);
   const airP=cl((lf-40)/100,0,1), boneP=cl((lf-80)/100,0,1);
   const drawPath=(pts:{x:number;y:number}[],progress:number,color:string)=>{
     const n=Math.floor(pts.length*progress); if(n<2)return null;
@@ -320,7 +328,7 @@ const SceneSetup:React.FC<{frame:number}>=({frame})=>{
     return <path d={d} fill="none" stroke={color} strokeWidth={4} strokeLinecap="round" filter="url(#gcrisp)"/>;
   };
   return(
-    <g opacity={op} transform={`translate(${dx},${dy})`}>
+    <g opacity={op}>
       <text x={CX} y={220} textAnchor="middle" fontFamily="'Impact','Arial Black',sans-serif"
         fontSize={54} fill={WHITE} filter="url(#gcrisp)" letterSpacing="2">दो रास्ते</text>
       <text x={CX} y={280} textAnchor="middle" fontFamily="'Courier New',monospace"
@@ -329,14 +337,14 @@ const SceneSetup:React.FC<{frame:number}>=({frame})=>{
         <HeadProfile progress={headP} strokeCol={PURP} fillOpacity={0.14}/>
       </g>
       <g opacity={airP}>
-        {drawPath(airPts,airP,TEAL)}
-        <WavePath pts={airPts} frame={frame} color={TEAL} freq={3} amp={18} speed={2.5} opacity={0.7} strokeWidth={3}/>
+        {drawPath(AIR_PTS,airP,TEAL)}
+        <WavePath pts={AIR_PTS} frame={frame} color={TEAL} freq={3} amp={18} speed={2.5} opacity={0.7} strokeWidth={3}/>
         <text x={CX} y={490} textAnchor="middle" fontFamily="'Arial',sans-serif"
           fontSize={32} fill={TEAL} fontWeight="700">🌊 हवा (Air)</text>
       </g>
       <g opacity={boneP}>
-        {drawPath(bonePts,boneP,GOLD)}
-        <WavePath pts={bonePts} frame={frame} color={GOLD} freq={4} amp={10} speed={3} opacity={0.8} strokeWidth={3}/>
+        {drawPath(BONE_PTS,boneP,GOLD)}
+        <WavePath pts={BONE_PTS} frame={frame} color={GOLD} freq={4} amp={10} speed={3} opacity={0.8} strokeWidth={3}/>
         <text x={CX} y={840} textAnchor="middle" fontFamily="'Arial',sans-serif"
           fontSize={32} fill={GOLD} fontWeight="700">🦴 हड्डी (Bone)</text>
       </g>
@@ -350,7 +358,6 @@ const SceneSetup:React.FC<{frame:number}>=({frame})=>{
   );
 };
 
-// ── SCENE 3: MECHANISM ────────────────────────────────────────────
 const SceneMechanism:React.FC<{frame:number}>=({frame})=>{
   const lf=frame-T.MECH_S; if(lf<0)return null;
   const dur=T.MECH_E-T.MECH_S;
@@ -358,15 +365,6 @@ const SceneMechanism:React.FC<{frame:number}>=({frame})=>{
                     interpolate(lf,[dur-30,dur],[1,0],{extrapolateRight:'clamp'}));
   const phase2Start=360, isPhase2=lf>=phase2Start, p2lf=lf-phase2Start;
   const boneVibeAmp=isPhase2?interpolate(p2lf,[0,60],[0,1],{extrapolateRight:'clamp'}):0;
-  const freqBars=Array.from({length:14},(_,i)=>({
-    x:120+i*62, h:(60+sr(i*2)*120)*(0.4+0.6*Math.abs(Math.sin(lf*0.12+i*0.7))),
-    col:i%3===0?TEAL:i%3===1?BLUE:PURP,
-  }));
-  const boneFreqBars=Array.from({length:14},(_,i)=>({
-    x:120+i*62,
-    h:(80+sr(i*2+1)*100)*(i<5?1.6:i<8?1.1:0.7)*(0.4+0.6*Math.abs(Math.sin(lf*0.12+i*0.7+2)))*boneVibeAmp,
-    col:i<5?GOLD:i<8?AMBER:CORAL,
-  }));
   return(
     <g opacity={op}>
       <text x={CX} y={180} textAnchor="middle" fontFamily="'Impact','Arial Black',sans-serif"
@@ -378,238 +376,117 @@ const SceneMechanism:React.FC<{frame:number}>=({frame})=>{
           fontSize={28} fill={TEAL} fontWeight="700">🎙 Microphone सुनता है</text>
         <rect x={100} y={390} width={880} height={280} rx={16}
           fill={BG2} fillOpacity={0.7} stroke={TEAL} strokeWidth={1.5} strokeOpacity={0.4}/>
-        {freqBars.map((b,i)=>(
-          <rect key={i} x={b.x} y={630-b.h} width={46} height={b.h} rx={6} fill={b.col} fillOpacity={0.85}/>
-        ))}
-        <text x={CX} y={700} textAnchor="middle" fontFamily="'Courier New',monospace"
-          fontSize={16} fill={TEAL} opacity={0.6}>AIR CONDUCTION — balanced</text>
+        {Array.from({length:14}).map((_,i)=>{
+          const h=(60+sr(i*2)*120)*(0.4+0.6*Math.abs(Math.sin(lf*0.12+i*0.7)));
+          const col=i%3===0?TEAL:i%3===1?BLUE:PURP;
+          return <rect key={i} x={120+i*62} y={630-h} width={46} height={h} rx={6} fill={col} fillOpacity={0.85}/>;
+        })}
       </g>
       <g opacity={boneVibeAmp}>
         <text x={CX} y={900} textAnchor="middle" fontFamily="'Arial',sans-serif"
           fontSize={28} fill={GOLD} fontWeight="700">🦴 हड्डी से आवाज़</text>
         <rect x={100} y={920} width={880} height={280} rx={16}
           fill={BG2} fillOpacity={0.7} stroke={GOLD} strokeWidth={1.5} strokeOpacity={0.4}/>
-        {boneFreqBars.map((b,i)=>(
-          <rect key={i} x={b.x} y={1160-b.h} width={46} height={b.h} rx={6} fill={b.col} fillOpacity={0.85}/>
-        ))}
-        <rect x={110} y={1060} width={240} height={50} rx={8}
-          fill={GOLD} fillOpacity={0.15} stroke={GOLD} strokeWidth={1.5}/>
-        <text x={230} y={1092} textAnchor="middle" fontFamily="'Courier New',monospace"
-          fontSize={16} fill={GOLD}>↑ LOW FREQ BOOST</text>
-        <text x={CX} y={1230} textAnchor="middle" fontFamily="'Courier New',monospace"
-          fontSize={16} fill={GOLD} opacity={0.6}>BONE CONDUCTION — bass boosted</text>
+        {Array.from({length:14}).map((_,i)=>{
+          const h=(80+sr(i*2+1)*100)*(i<5?1.6:i<8?1.1:0.7)*(0.4+0.6*Math.abs(Math.sin(lf*0.12+i*0.7+2)))*boneVibeAmp;
+          const col=i<5?GOLD:i<8?AMBER:CORAL;
+          return <rect key={i} x={120+i*62} y={1160-h} width={46} height={h} rx={6} fill={col} fillOpacity={0.85}/>;
+        })}
       </g>
       <g opacity={isPhase2?interpolate(p2lf,[30,70],[0,1],{extrapolateRight:'clamp'}):0}>
-        <text x={CX} y={1420} textAnchor="middle" fontFamily="serif"
-          fontSize={34} fill={WHITE} opacity={0.9}>इसीलिए Recording में आवाज़</text>
-        <text x={CX} y={1470} textAnchor="middle" fontFamily="serif"
-          fontSize={34} fill={CORAL} fontWeight="700">पतली लगती है।</text>
+        <text x={CX} y={1420} textAnchor="middle" fontFamily="serif" fontSize={34} fill={WHITE}>इसीलिए Recording में आवाज़</text>
+        <text x={CX} y={1470} textAnchor="middle" fontFamily="serif" fontSize={34} fill={CORAL} fontWeight="700">पतली लगती है।</text>
       </g>
     </g>
   );
 };
 
-// ── SCENE 4: PROOF ────────────────────────────────────────────────
 const SceneProof:React.FC<{frame:number}>=({frame})=>{
   const lf=frame-T.PROOF_S; if(lf<0)return null;
   const dur=T.PROOF_E-T.PROOF_S;
   const op=Math.min(interpolate(lf,[0,25],[0,1],{extrapolateRight:'clamp'}),
                     interpolate(lf,[dur-30,dur],[1,0],{extrapolateRight:'clamp'}));
-  const scopeW=880,scopeH=280,scopeX=100,scopeAirY=380,scopeBoneY=780;
+  const scopeW=880,scopeH=280,scopeX=100;
   const drawScope=(yOff:number,color:string,ampM:number,freqM:number)=>{
     const pts=Array.from({length:120},(_,i)=>{
       const t=i/119, x=scopeX+t*scopeW;
-      const y=yOff+scopeH/2+Math.sin(t*Math.PI*freqM*2-lf*0.14)*ampM*90
-              +Math.sin(t*Math.PI*freqM*4-lf*0.22)*ampM*22;
+      const y=yOff+scopeH/2+Math.sin(t*Math.PI*freqM*2-lf*0.14)*ampM*90 + Math.sin(t*Math.PI*freqM*4-lf*0.22)*ampM*22;
       return `${x},${y}`;
     }).join(' ');
     return(
       <g>
         <rect x={scopeX} y={yOff} width={scopeW} height={scopeH} rx={14}
           fill="url(#scope-bg)" stroke={color} strokeWidth={1.8} strokeOpacity={0.5}/>
-        <line x1={scopeX+10} x2={scopeX+scopeW-10} y1={yOff+scopeH/2} y2={yOff+scopeH/2}
-          stroke={color} strokeWidth={0.8} strokeOpacity={0.25} strokeDasharray="6,6"/>
-        <polyline points={pts} fill="none" stroke={color}
-          strokeWidth={2.8} strokeLinecap="round" filter="url(#gcrisp)"/>
-        <rect x={scopeX+(lf%scopeW)} y={yOff} width={2} height={scopeH}
-          fill={color} fillOpacity={0.3}/>
+        <polyline points={pts} fill="none" stroke={color} strokeWidth={2.8} strokeLinecap="round" filter="url(#gcrisp)"/>
+        <rect x={scopeX+(lf%scopeW)} y={yOff} width={2} height={scopeH} fill={color} fillOpacity={0.3}/>
       </g>
     );
   };
   return(
     <g opacity={op}>
-      <text x={CX} y={200} textAnchor="middle" fontFamily="'Impact','Arial Black',sans-serif"
-        fontSize={46} fill={WHITE} letterSpacing="2">Oscilloscope Proof</text>
-      <text x={CX} y={252} textAnchor="middle" fontFamily="'Courier New',monospace"
-        fontSize={20} fill={BLUE} opacity={0.8} letterSpacing="4">WAVEFORM COMPARISON</text>
+      <text x={CX} y={200} textAnchor="middle" fontFamily="'Impact','Arial Black',sans-serif" fontSize={46} fill={WHITE}>Oscilloscope Proof</text>
       <g opacity={interpolate(lf,[0,40],[0,1],{extrapolateRight:'clamp'})}>
-        <text x={CX} y={360} textAnchor="middle" fontFamily="'Arial',sans-serif"
-          fontSize={26} fill={TEAL} fontWeight="700">🌊 हवा — जो mic सुनता है</text>
-        {drawScope(scopeAirY,TEAL,0.6,2)}
-        <text x={CX} y={scopeAirY+scopeH+40} textAnchor="middle"
-          fontFamily="'Courier New',monospace" fontSize={15} fill={TEAL} opacity={0.6}>
-          Balanced frequency response</text>
+        <text x={CX} y={360} textAnchor="middle" fontFamily="'Arial',sans-serif" fontSize={26} fill={TEAL}>🌊 हवा — जो mic सुनता है</text>
+        {drawScope(380,TEAL,0.6,2)}
       </g>
       <g opacity={interpolate(lf,[60,100],[0,1],{extrapolateRight:'clamp'})}>
-        <text x={CX} y={760} textAnchor="middle" fontFamily="'Arial',sans-serif"
-          fontSize={26} fill={GOLD} fontWeight="700">🦴 हड्डी — जो तुम सुनते हो</text>
-        {drawScope(scopeBoneY,GOLD,1.0,1.2)}
-        <text x={CX} y={scopeBoneY+scopeH+40} textAnchor="middle"
-          fontFamily="'Courier New',monospace" fontSize={15} fill={GOLD} opacity={0.6}>
-          Bass-boosted (low freq enhanced)</text>
-      </g>
-      <g opacity={interpolate(lf,[120,160],[0,1],{extrapolateRight:'clamp'})}>
-        <line x1={CX} y1={scopeAirY+scopeH+60} x2={CX} y2={scopeBoneY-20}
-          stroke={CORAL} strokeWidth={3} strokeDasharray="10,6"/>
-        <text x={CX+40} y={(scopeAirY+scopeH+scopeBoneY)/2+10}
-          fontFamily="'Courier New',monospace" fontSize={18} fill={CORAL}>DIFFERENT!</text>
+        <text x={CX} y={760} textAnchor="middle" fontFamily="'Arial',sans-serif" fontSize={26} fill={GOLD}>🦴 हड्डी — जो तुम सुनते हो</text>
+        {drawScope(780,GOLD,1.0,1.2)}
       </g>
       <g opacity={interpolate(lf,[200,240],[0,1],{extrapolateRight:'clamp'})}>
-        <rect x={80} y={1360} width={920} height={100} rx={16}
-          fill={CORAL} fillOpacity={0.12} stroke={CORAL} strokeWidth={1.5}/>
-        <text x={CX} y={1402} textAnchor="middle" fontFamily="serif"
-          fontSize={28} fill={WHITE}>Recording = सिर्फ हवा</text>
-        <text x={CX} y={1442} textAnchor="middle" fontFamily="serif"
-          fontSize={28} fill={CORAL} fontWeight="700">∴ तुम्हारी आवाज़ अलग लगती है</text>
+        <rect x={80} y={1360} width={920} height={100} rx={16} fill={CORAL} fillOpacity={0.12} stroke={CORAL} strokeWidth={1.5}/>
+        <text x={CX} y={1402} textAnchor="middle" fontFamily="serif" fontSize={28} fill={WHITE}>Recording = सिर्फ हवा</text>
+        <text x={CX} y={1442} textAnchor="middle" fontFamily="serif" fontSize={28} fill={CORAL} fontWeight="700">∴ तुम्हारी आवाज़ अलग लगती है</text>
       </g>
     </g>
   );
 };
 
-// ── SCENE 5: TWIST ────────────────────────────────────────────────
 const SceneTwist:React.FC<{frame:number}>=({frame})=>{
   const lf=frame-T.TWIST_S; if(lf<0)return null;
   const dur=T.TWIST_E-T.TWIST_S;
   const op=Math.min(interpolate(lf,[0,25],[0,1],{extrapolateRight:'clamp'}),
                     interpolate(lf,[dur-30,dur],[1,0],{extrapolateRight:'clamp'}));
-  const {dx,dy}=shake(frame);
-  const notes=['♩','♪','♫','♬'];
-  const noteParts=Array.from({length:12},(_,i)=>({
-    x:100+sr(i*3+1)*(W-200), y:300+sr(i*3+2)*1200,
-    sp:(sr(i*3+3)-0.5)*1.2, ph:sr(i*3)*Math.PI*2,
-    note:notes[i%4], col:[GOLD,PURP,TEAL,CORAL][i%4],
-  }));
   const pianoY=1500, pianoOp=interpolate(lf,[80,120],[0,1],{extrapolateRight:'clamp'});
-  const whiteKeys=Array.from({length:14},(_,i)=>({x:108+i*60}));
-  const blackKeyPos=[1,2,4,5,6,8,9,11,12];
   return(
-    <g opacity={op} transform={`translate(${dx},${dy})`}>
-      {noteParts.map((n,i)=>(
-        <text key={i} x={(n.x+n.sp*lf)%W}
-          y={(n.y-lf*0.4+Math.sin(lf*0.03+n.ph)*20)%H}
+    <g opacity={op}>
+      {NOTE_PTS.map((n,i)=>(
+        <text key={i} x={(n.x+n.sp*lf)%W} y={(n.y-lf*0.4+Math.sin(lf*0.03+n.ph)*20)%H}
           textAnchor="middle" fontFamily="serif" fontSize={28} fill={n.col} opacity={0.22}>{n.note}</text>
       ))}
       <g opacity={interpolate(lf,[0,30],[0,1],{extrapolateRight:'clamp'})}>
-        <text x={CX} y={260} textAnchor="middle" fontFamily="'Impact','Arial Black',sans-serif"
-          fontSize={80} fill={GOLD} filter="url(#g3b1b)">Beethoven</text>
-        <text x={CX} y={340} textAnchor="middle" fontFamily="'Courier New',monospace"
-          fontSize={22} fill={WHITE} opacity={0.7} letterSpacing="3">THE BONE CONDUCTION MASTER</text>
-      </g>
-      <g opacity={interpolate(lf,[40,80],[0,1],{extrapolateRight:'clamp'})}>
-        <rect x={240} y={380} width={600} height={100} rx={18}
-          fill={RED} fillOpacity={0.18} stroke={RED} strokeWidth={2}/>
-        <text x={CX} y={422} textAnchor="middle" fontFamily="'Impact','Arial Black',sans-serif"
-          fontSize={32} fill={RED} letterSpacing="3">पूरी तरह बहरे थे</text>
-        <text x={CX} y={462} textAnchor="middle" fontFamily="'Courier New',monospace"
-          fontSize={18} fill={RED} opacity={0.7}>COMPLETELY DEAF</text>
-      </g>
-      <g opacity={interpolate(lf,[80,120],[0,1],{extrapolateRight:'clamp'})}>
-        {['पर उन्होंने Piano की','छड़ी दाँत से पकड़कर','music सुना।'].map((t,i)=>(
-          <text key={i} x={CX} y={620+i*58} textAnchor="middle"
-            fontFamily="serif" fontSize={i===2?36:32}
-            fill={i===2?GOLD:WHITE} fontWeight={i===2?'700':'400'} opacity={0.9}>{t}</text>
-        ))}
+        <text x={CX} y={260} textAnchor="middle" fontFamily="'Impact','Arial Black',sans-serif" fontSize={80} fill={GOLD}>Beethoven</text>
       </g>
       <g opacity={pianoOp}>
         <rect x={90} y={pianoY} width={900} height={180} rx={12} fill="#1a0a00" stroke={AMBER} strokeWidth={2}/>
-        {whiteKeys.map((k,i)=>(
-          <rect key={i} x={k.x} y={pianoY+10} width={54} height={160} rx={4}
-            fill={WHITE} fillOpacity={0.92} stroke="#333" strokeWidth={1}/>
+        {Array.from({length:14}).map((_,i)=>(
+          <rect key={i} x={108+i*60} y={pianoY+10} width={54} height={160} rx={4} fill={WHITE} stroke="#333" strokeWidth={1}/>
         ))}
-        {blackKeyPos.map((pos,i)=>(
-          <rect key={i} x={108+pos*60-14} y={pianoY+10} width={28} height={100} rx={3} fill="#0d0d0d"/>
-        ))}
-        <line x1={CX} y1={pianoY-30} x2={CX+20} y2={pianoY+10}
-          stroke={CORAL} strokeWidth={6} strokeLinecap="round"
-          opacity={interpolate(lf,[100,140],[0,1],{extrapolateRight:'clamp'})}/>
-      </g>
-      <g opacity={interpolate(lf,[140,180],[0,1],{extrapolateRight:'clamp'})}>
-        {Array.from({length:8},(_,i)=>{
-          const baseX=200+i*90;
-          const pts=Array.from({length:20},(_,j)=>{
-            const t=j/19, y=pianoY-t*200;
-            const x=baseX+Math.sin(t*Math.PI*4+lf*0.2+i)*(20+sr(i)*15)*Math.sin(t*Math.PI);
-            return`${x},${y}`;
-          }).join(' ');
-          return <polyline key={i} points={pts} fill="none" stroke={GOLD}
-            strokeWidth={1.8} strokeLinecap="round" opacity={0.5}/>;
-        })}
-        <text x={CX} y={1270} textAnchor="middle" fontFamily="'Courier New',monospace"
-          fontSize={20} fill={GOLD} opacity={0.8} letterSpacing="2">BONE VIBRATION ↑</text>
       </g>
       <g opacity={interpolate(lf,[200,240],[0,1],{extrapolateRight:'clamp'})}>
-        <rect x={60} y={1750} width={960} height={110} rx={18}
-          fill={TEAL} fillOpacity={0.12} stroke={TEAL} strokeWidth={1.5}/>
-        <text x={CX} y={1796} textAnchor="middle" fontFamily="serif"
-          fontSize={30} fill={WHITE}>वो भी — Bone Conduction था</text>
-        <text x={CX} y={1844} textAnchor="middle" fontFamily="'Courier New',monospace"
-          fontSize={18} fill={TEAL} opacity={0.8} letterSpacing="2">SAME PHENOMENON</text>
+        <rect x={60} y={1750} width={960} height={110} rx={18} fill={TEAL} fillOpacity={0.12} stroke={TEAL} strokeWidth={1.5}/>
+        <text x={CX} y={1796} textAnchor="middle" fontFamily="serif" fontSize={30} fill={WHITE}>वो भी — Bone Conduction था</text>
       </g>
     </g>
   );
 };
 
-// ── SCENE 6: OUTRO ────────────────────────────────────────────────
 const SceneOutro:React.FC<{frame:number}>=({frame})=>{
   const lf=frame-T.OUT_S; if(lf<0)return null;
   const dur=T.OUT_E-T.OUT_S;
   const op=Math.min(interpolate(lf,[0,30],[0,1],{extrapolateRight:'clamp'}),
                     interpolate(lf,[dur-50,dur],[1,0],{extrapolateRight:'clamp'}));
-  const rays=Array.from({length:16},(_,i)=>{
-    const angle=(i/16)*Math.PI*2, len=interpolate(lf,[0,120],[0,380],{extrapolateRight:'clamp'});
-    return{
-      x1:CX+Math.cos(angle)*80, y1:CY-200+Math.sin(angle)*80,
-      x2:CX+Math.cos(angle)*(80+len), y2:CY-200+Math.sin(angle)*(80+len),
-      col:i%4===0?GOLD:i%4===1?TEAL:i%4===2?PURP:CORAL,
-    };
-  });
   return(
     <g opacity={op}>
-      <circle cx={CX} cy={CY-200} r={interpolate(lf,[0,60],[0,300],{extrapolateRight:'clamp'})}
-        fill={GOLD} fillOpacity={0.06} filter="url(#ghalo)"/>
-      {rays.map((r,i)=>(
-        <line key={i} x1={r.x1} y1={r.y1} x2={r.x2} y2={r.y2}
-          stroke={r.col} strokeWidth={2} opacity={0.4}/>
-      ))}
-      <circle cx={CX} cy={CY-200} r={80} fill={GOLD} fillOpacity={0.15}
-        stroke={GOLD} strokeWidth={3} filter="url(#gcrisp)"/>
+      <circle cx={CX} cy={CY-200} r={80} fill={GOLD} fillOpacity={0.15} stroke={GOLD} strokeWidth={3}/>
       <text x={CX} y={CY-185} textAnchor="middle" fontFamily="serif" fontSize={60} fill={GOLD}>🎙</text>
       <g opacity={interpolate(lf,[40,80],[0,1],{extrapolateRight:'clamp'})}>
-        <text x={CX} y={CY+180} textAnchor="middle" fontFamily="'Impact','Arial Black',sans-serif"
-          fontSize={64} fill={WHITE} filter="url(#g3b1b)" letterSpacing="1">तुम्हारी असली</text>
-        <text x={CX} y={CY+260} textAnchor="middle" fontFamily="'Impact','Arial Black',sans-serif"
-          fontSize={72} fill={GOLD} filter="url(#g3b1b)">आवाज़</text>
-        <text x={CX} y={CY+340} textAnchor="middle" fontFamily="serif"
-          fontSize={36} fill={WHITE} opacity={0.85}>वही है — जो दूसरे सुनते हैं।</text>
-      </g>
-      <g opacity={interpolate(lf,[100,140],[0,1],{extrapolateRight:'clamp'})}>
-        <rect x={280} y={CY+400} width={520} height={60} rx={14}
-          fill={TEAL} fillOpacity={0.15} stroke={TEAL} strokeWidth={1.5}/>
-        <text x={CX} y={CY+440} textAnchor="middle" fontFamily="'Courier New',monospace"
-          fontSize={20} fill={TEAL} letterSpacing="3">BONE CONDUCTION</text>
+        <text x={CX} y={CY+180} textAnchor="middle" fontFamily="'Impact','Arial Black',sans-serif" fontSize={64} fill={WHITE}>तुम्हारी असली</text>
+        <text x={CX} y={CY+260} textAnchor="middle" fontFamily="'Impact','Arial Black',sans-serif" fontSize={72} fill={GOLD}>आवाज़</text>
       </g>
       <g opacity={interpolate(lf,[160,200],[0,1],{extrapolateRight:'clamp'})}>
         <rect x={160} y={CY+520} width={760} height={90} rx={20} fill={CORAL} fillOpacity={0.9}/>
-        <text x={CX} y={CY+572} textAnchor="middle" fontFamily="'Impact','Arial Black',sans-serif"
-          fontSize={34} fill={WHITE} letterSpacing="2">🔔 Subscribe करो</text>
-        <text x={CX} y={CY+604} textAnchor="middle" fontFamily="serif"
-          fontSize={20} fill={WHITE} opacity={0.85}>हर हफ्ते नया science</text>
-      </g>
-      <g opacity={interpolate(lf,[220,260],[0,1],{extrapolateRight:'clamp'})}>
-        <text x={CX} y={H-140} textAnchor="middle" fontFamily="'Courier New',monospace"
-          fontSize={18} fill={WHITE} opacity={0.5} letterSpacing="4">HIDICT STUDIO</text>
-        <text x={CX} y={H-100} textAnchor="middle" fontFamily="'Courier New',monospace"
-          fontSize={14} fill={PURP} opacity={0.4} letterSpacing="6">SCIENCE IN HINDI</text>
+        <text x={CX} y={CY+572} textAnchor="middle" fontFamily="'Impact','Arial Black',sans-serif" fontSize={34} fill={WHITE}>🔔 Subscribe करो</text>
       </g>
     </g>
   );
@@ -621,8 +498,7 @@ export const BoneConduction: React.FC = () => {
   const {dx,dy} = shake(frame);
   return (
     <AbsoluteFill style={{background: BG}}>
-      <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`}
-        style={{position:'absolute',top:0,left:0}}>
+      <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{position:'absolute',top:0,left:0}}>
         <GlobalDefs/>
         <g transform={`translate(${dx},${dy})`}>
           <Background      frame={frame}/>
