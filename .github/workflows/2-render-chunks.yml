@@ -28,9 +28,10 @@ jobs:
         run: |
           if [ -f "public/audio/narration_final.mp3" ]; then
             echo "ready=true" >> $GITHUB_OUTPUT
+            echo "✅ narration_final.mp3 found"
           else
             echo "ready=false" >> $GITHUB_OUTPUT
-            echo "⚠ narration_final.mp3 not found — render will proceed without audio (add manually)"
+            echo "⚠ narration_final.mp3 not found — render will proceed without audio"
           fi
 
   # ── Render each chunk in parallel ─────────────────────────────
@@ -57,10 +58,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20"
-          cache: "npm"
+          # No cache — no package-lock.json in repo
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install
 
       - name: Download audio assets
         uses: dawidd6/action-download-artifact@v6
