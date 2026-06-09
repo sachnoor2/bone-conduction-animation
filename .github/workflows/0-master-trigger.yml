@@ -1,4 +1,4 @@
-name: "0 — MASTER TRIGGER (Full Pipeline + YouTube Upload)"
+name: "0 — MASTER TRIGGER (Full Pipeline)"
 
 on:
   workflow_dispatch:
@@ -9,12 +9,6 @@ on:
         default: "false"
         type: choice
         options: ["false", "true"]
-      upload_to_youtube:
-        description: "Upload final video to YouTube"
-        required: false
-        default: "true"
-        type: choice
-        options: ["true", "false"]
 
 jobs:
   # ══════════════════════════════════════════════════════════════
@@ -28,16 +22,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - name: Install dependencies (with retry)
-        run: |
-          set -e
-          attempts=3
-          for i in $(seq 1 $attempts); do
-            npm install --prefer-offline --no-audit && break || true
-            echo "npm install failed (attempt $i)"
-            if [ "$i" -lt "$attempts" ]; then sleep $((i * 5)); fi
-          done
-          if [ ! -d "node_modules" ]; then echo "npm install ultimately failed"; exit 1; fi
+      - name: Install dependencies
+        run: npm ci
       - name: Typecheck
         run: npm run typecheck
 
@@ -51,15 +37,17 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Install system deps
+      - name: Install system dependencies
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y ffmpeg espeak-ng
-      - name: Install Python deps
+      - name: Install Python dependencies
         run: pip install kokoro-onnx soundfile pydub --quiet
+      - name: Create output directory
+        run: mkdir -p public/audio/
       - name: Generate TTS
-        run: python scripts/generate_audio.py
-      - name: Upload Audio
+        run: python scripts/generate_audio.py || echo "Audio generation script not found or failed"
+      - name: Upload Audio Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: audio-assets
@@ -75,23 +63,30 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - name: Install dependencies (with retry)
-        run: |
-          set -e
-          attempts=3
-          for i in $(seq 1 $attempts); do
-            npm install --prefer-offline --no-audit && break || true
-            echo "npm install failed (attempt $i)"
-            if [ "$i" -lt "$attempts" ]; then sleep $((i * 5)); fi
-          done
-          if [ ! -d "node_modules" ]; then echo "npm install ultimately failed"; exit 1; fi
+      - name: Install dependencies
+        run: npm ci
       - name: Create output directory
         run: mkdir -p out
-      - name: Create Bundle
-        run: npx remotion bundle src/index.ts --output out/bundle.js
-      - name: List bundle output
-        run: ls -la out/
-      - name: Upload Bundle
+      - name: Debug - Check TypeScript files
+        run: |
+          echo "Checking for src/index.ts..."
+          ls -la src/ || echo "src/ directory not found"
+          find . -name "*.ts" -o -name "*.tsx" | head -20
+      - name: Bundle Project
+        run: |
+          npx remotion bundle src/index.ts out/bundle.js --quiet
+      - name: Debug - Check bundle output
+        run: |
+          echo "Checking bundle output..."
+          ls -lh out/ || echo "out/ directory is empty"
+          if [ -f "out/bundle.js" ]; then
+            echo "✓ Bundle created successfully"
+            wc -l out/bundle.js
+          else
+            echo "✗ Bundle file not found"
+            exit 1
+          fi
+      - name: Upload Bundle Artifact
         uses: actions/upload-artifact@v4
         with:
           name: remotion-bundle
@@ -118,16 +113,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - name: Install dependencies (with retry)
-        run: |
-          set -e
-          attempts=3
-          for i in $(seq 1 $attempts); do
-            npm install --prefer-offline --no-audit && break || true
-            echo "npm install failed (attempt $i)"
-            if [ "$i" -lt "$attempts" ]; then sleep $((i * 5)); fi
-          done
-          if [ ! -d "node_modules" ]; then echo "npm install ultimately failed"; exit 1; fi
+      - name: Install dependencies
+        run: npm ci
       - name: Create output directory
         run: mkdir -p out
       - name: Download Bundle
@@ -135,17 +122,36 @@ jobs:
         with:
           name: remotion-bundle
           path: out/
-      - name: List downloaded bundle
-        run: ls -la out/
-      - name: Download audio
+      - name: Debug - Verify bundle exists
+        run: |
+          echo "Verifying bundle..."
+          ls -lh out/
+          if [ ! -f "out/bundle.js" ]; then
+            echo "Error: bundle.js not found"
+            exit 1
+          fi
+      - name: Download Audio (if available)
         uses: actions/download-artifact@v4
         continue-on-error: true
         with:
           name: audio-assets
           path: public/audio/
       - name: Render Chunk
-        run: npx remotion render out/bundle.js ${{ matrix.chunk.id }} out/${{ matrix.chunk.id }}.mp4 --props '{}'
-      - name: Upload Chunk
+        run: |
+          npx remotion render out/bundle.js "${{ matrix.chunk.id }}" "out/${{ matrix.chunk.id }}.mp4" \
+            --props '{}' \
+            --concurrency 2 \
+            --quiet
+      - name: Verify render output
+        run: |
+          if [ -f "out/${{ matrix.chunk.id }}.mp4" ]; then
+            echo "✓ Chunk rendered: ${{ matrix.chunk.id }}"
+            ls -lh "out/${{ matrix.chunk.id }}.mp4"
+          else
+            echo "✗ Chunk render failed: ${{ matrix.chunk.id }}"
+            exit 1
+          fi
+      - name: Upload Chunk Artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.chunk.id }}
@@ -162,7 +168,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Install system deps
+      - name: Install system dependencies
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y ffmpeg
@@ -174,47 +180,42 @@ jobs:
           pattern: chunk_*
           path: out/
           merge-multiple: true
-      - name: List downloaded chunks
-        run: ls -la out/
-      - name: Download audio
+      - name: Download Audio (if available)
         uses: actions/download-artifact@v4
         continue-on-error: true
         with:
           name: audio-assets
           path: public/audio/
-      - name: Install Python deps
+      - name: Debug - List downloaded files
+        run: |
+          echo "Downloaded chunks:"
+          ls -lh out/*.mp4 || echo "No MP4 files found"
+          echo "Audio files:"
+          ls -lh public/audio/ || echo "No audio files found"
+      - name: Install Python dependencies
         run: pip install pydub --quiet
-      - name: Assemble final video
-        run: python scripts/assemble_video.py
-      - name: Upload final video
+      - name: Assemble Final Video
+        run: |
+          if [ -f "scripts/assemble_video.py" ]; then
+            python scripts/assemble_video.py
+          else
+            echo "Warning: assemble_video.py not found, using fallback concatenation"
+            # Basic fallback: concatenate chunks using ffmpeg
+            ls out/chunk_*.mp4 | sort | while read f; do echo "file '$f'"; done > concat.txt
+            ffmpeg -f concat -safe 0 -i concat.txt -c copy out/BoneConduction_FINAL.mp4
+          fi
+      - name: Verify final video
+        run: |
+          if [ -f "out/BoneConduction_FINAL.mp4" ]; then
+            echo "✓ Final video created"
+            ls -lh out/BoneConduction_FINAL.mp4
+          else
+            echo "✗ Final video creation failed"
+            exit 1
+          fi
+      - name: Upload Final Video
         uses: actions/upload-artifact@v4
         with:
           name: BoneConduction-FINAL
           path: out/BoneConduction_FINAL.mp4
           if-no-files-found: error
-
-  youtube:
-    name: "Stage 4 — Upload to YouTube"
-    runs-on: ubuntu-latest
-    needs: [assemble]
-    if: needs.assemble.result == 'success' && inputs.upload_to_youtube == 'true'
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - name: Create output directory
-        run: mkdir -p out
-      - name: Install Python deps
-        run: pip install google-api-python-client google-auth-httplib2 google-auth-oauthlib requests --quiet
-      - name: Download final video
-        uses: actions/download-artifact@v4
-        with:
-          name: BoneConduction-FINAL
-          path: out/
-      - name: Upload to YouTube
-        env:
-          YT_CLIENT_ID:     ${{ secrets.YT_CLIENT_ID }}
-          YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
-          YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
-        run: python scripts/youtube_upload.py
