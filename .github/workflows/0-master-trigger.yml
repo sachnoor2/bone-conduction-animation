@@ -28,9 +28,16 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-          cache: 'npm'
-      - name: Install dependencies
-        run: npm ci
+      - name: Install dependencies (with retry)
+        run: |
+          set -e
+          attempts=3
+          for i in $(seq 1 $attempts); do
+            npm install --prefer-offline --no-audit && break || true
+            echo "npm install failed (attempt $i)"
+            if [ "$i" -lt "$attempts" ]; then sleep $((i * 5)); fi
+          done
+          if [ ! -d "node_modules" ]; then echo "npm install ultimately failed"; exit 1; fi
       - name: Typecheck
         run: npm run typecheck
 
@@ -68,9 +75,16 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-          cache: 'npm'
-      - name: Install dependencies
-        run: npm ci
+      - name: Install dependencies (with retry)
+        run: |
+          set -e
+          attempts=3
+          for i in $(seq 1 $attempts); do
+            npm install --prefer-offline --no-audit && break || true
+            echo "npm install failed (attempt $i)"
+            if [ "$i" -lt "$attempts" ]; then sleep $((i * 5)); fi
+          done
+          if [ ! -d "node_modules" ]; then echo "npm install ultimately failed"; exit 1; fi
       - name: Create output directory
         run: mkdir -p out
       - name: Create Bundle
@@ -104,9 +118,16 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-          cache: 'npm'
-      - name: Install dependencies
-        run: npm ci
+      - name: Install dependencies (with retry)
+        run: |
+          set -e
+          attempts=3
+          for i in $(seq 1 $attempts); do
+            npm install --prefer-offline --no-audit && break || true
+            echo "npm install failed (attempt $i)"
+            if [ "$i" -lt "$attempts" ]; then sleep $((i * 5)); fi
+          done
+          if [ ! -d "node_modules" ]; then echo "npm install ultimately failed"; exit 1; fi
       - name: Create output directory
         run: mkdir -p out
       - name: Download Bundle
