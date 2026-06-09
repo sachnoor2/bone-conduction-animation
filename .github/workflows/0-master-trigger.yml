@@ -28,11 +28,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
+          cache: 'npm'
       - name: Install dependencies
-        run: npm install --prefer-offline --no-audit
-        continue-on-error: true
-      - name: Retry npm install if failed
-        run: npm install --prefer-offline --no-audit
+        run: npm ci
       - name: Typecheck
         run: npm run typecheck
 
@@ -59,6 +57,7 @@ jobs:
         with:
           name: audio-assets
           path: public/audio/
+          if-no-files-found: warn
 
   bundle:
     name: "Stage 2a — Bundle Project"
@@ -69,20 +68,21 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
+          cache: 'npm'
       - name: Install dependencies
-        run: npm install --prefer-offline --no-audit
-        continue-on-error: true
-      - name: Retry npm install if failed
-        run: npm install --prefer-offline --no-audit
+        run: npm ci
+      - name: Create output directory
+        run: mkdir -p out
       - name: Create Bundle
-        run: |
-          mkdir -p out
-          npx remotion bundle src/index.ts out/bundle.js
+        run: npx remotion bundle src/index.ts --output out/bundle.js
+      - name: List bundle output
+        run: ls -la out/
       - name: Upload Bundle
         uses: actions/upload-artifact@v4
         with:
           name: remotion-bundle
           path: out/bundle.js
+          if-no-files-found: error
 
   render:
     name: "Stage 2b — Render ${{ matrix.chunk.id }}"
@@ -104,16 +104,18 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
+          cache: 'npm'
       - name: Install dependencies
-        run: npm install --prefer-offline --no-audit
-        continue-on-error: true
-      - name: Retry npm install if failed
-        run: npm install --prefer-offline --no-audit
+        run: npm ci
+      - name: Create output directory
+        run: mkdir -p out
       - name: Download Bundle
         uses: actions/download-artifact@v4
         with:
           name: remotion-bundle
           path: out/
+      - name: List downloaded bundle
+        run: ls -la out/
       - name: Download audio
         uses: actions/download-artifact@v4
         continue-on-error: true
@@ -121,13 +123,13 @@ jobs:
           name: audio-assets
           path: public/audio/
       - name: Render Chunk
-        run: |
-          npx remotion render out/bundle.js ${{ matrix.chunk.id }} out/${{ matrix.chunk.id }}.mp4 --props '{}'
+        run: npx remotion render out/bundle.js ${{ matrix.chunk.id }} out/${{ matrix.chunk.id }}.mp4 --props '{}'
       - name: Upload Chunk
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.chunk.id }}
           path: out/${{ matrix.chunk.id }}.mp4
+          if-no-files-found: error
 
   assemble:
     name: "Stage 3 — Assemble Final Video"
@@ -143,12 +145,16 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y ffmpeg
+      - name: Create output directory
+        run: mkdir -p out
       - name: Download Chunks
         uses: actions/download-artifact@v4
         with:
           pattern: chunk_*
           path: out/
           merge-multiple: true
+      - name: List downloaded chunks
+        run: ls -la out/
       - name: Download audio
         uses: actions/download-artifact@v4
         continue-on-error: true
@@ -164,6 +170,7 @@ jobs:
         with:
           name: BoneConduction-FINAL
           path: out/BoneConduction_FINAL.mp4
+          if-no-files-found: error
 
   youtube:
     name: "Stage 4 — Upload to YouTube"
@@ -175,6 +182,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - name: Create output directory
+        run: mkdir -p out
       - name: Install Python deps
         run: pip install google-api-python-client google-auth-httplib2 google-auth-oauthlib requests --quiet
       - name: Download final video
