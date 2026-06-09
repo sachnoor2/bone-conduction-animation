@@ -55,8 +55,11 @@ jobs:
           path: out/
 
       - name: Bundle project
-        run: npx remotion bundle src/index.ts out/bundle.js --quiet
-        if: steps.download-artifact.outcome != 'success' || !steps.download-artifact.outputs.downloadPath
+        run: |
+          npx remotion bundle src/index.ts out/bundle.js --quiet
+          if [ -f "build/bundle.js" ]; then
+            cp build/bundle.js out/bundle.js
+          fi
 
       - name: Install Chrome for Remotion
         run: npx remotion browser ensure
@@ -65,12 +68,14 @@ jobs:
         run: |
           mkdir -p out
           npx remotion render \
-            --composition=${{ matrix.chunk.compositionId }} \
-            --output=out/${{ matrix.chunk.id }}.mp4 \
-            --codec=h264 \
-            --crf=18 \
-            --jpeg-quality=95 \
-            --concurrency=2
+            out/bundle.js "${{ matrix.chunk.compositionId }}" "out/${{ matrix.chunk.id }}.mp4" \
+            --props '{}' \
+            --concurrency 2 \
+            --quiet || npx remotion render \
+            build/bundle.js "${{ matrix.chunk.compositionId }}" "out/${{ matrix.chunk.id }}.mp4" \
+            --props '{}' \
+            --concurrency 2 \
+            --quiet
         env:
           REMOTION_ALLOW_EVAL: true
 

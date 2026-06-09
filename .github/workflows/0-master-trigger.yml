@@ -59,9 +59,20 @@ jobs:
       - name: Install dependencies
         run: npm install
       - name: Bundle Project
-        run: npx remotion bundle src/index.ts out/bundle.js --quiet
+        run: |
+          npx remotion bundle src/index.ts out/bundle.js --quiet || true
+          if [ -f "build/bundle.js" ]; then
+            mkdir -p out
+            cp build/bundle.js out/bundle.js
+          fi
       - name: Verify bundle
         run: |
+          ls -la out/ || echo "out dir empty"
+          ls -la build/ 2>/dev/null || echo "no build dir"
+          if [ ! -f "out/bundle.js" ]; then
+            echo "✗ Bundle file not found - trying cache location"
+            npx remotion cache dir 2>/dev/null || true
+          fi
           if [ -f "out/bundle.js" ]; then
             echo "✓ Bundle created successfully"
           else
@@ -149,7 +160,7 @@ jobs:
       - name: Download All Chunks
         uses: actions/download-artifact@v4
         with:
-          pattern: chunk_*
+          pattern: "chunk_*"
           path: out/
           merge-multiple: true
       - name: Download Audio
