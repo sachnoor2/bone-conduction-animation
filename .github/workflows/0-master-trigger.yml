@@ -29,7 +29,10 @@ jobs:
         with:
           node-version: "20"
       - name: Install dependencies
-        run: npm install
+        run: npm install --prefer-offline --no-audit
+        continue-on-error: true
+      - name: Retry npm install if failed
+        run: npm install --prefer-offline --no-audit
       - name: Typecheck
         run: npm run typecheck
 
@@ -67,7 +70,10 @@ jobs:
         with:
           node-version: "20"
       - name: Install dependencies
-        run: npm install
+        run: npm install --prefer-offline --no-audit
+        continue-on-error: true
+      - name: Retry npm install if failed
+        run: npm install --prefer-offline --no-audit
       - name: Create Bundle
         run: |
           mkdir -p out
@@ -76,7 +82,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: remotion-bundle
-          path: out/bundle.jsbundle.js
+          path: out/bundle.js
 
   render:
     name: "Stage 2b — Render ${{ matrix.chunk.id }}"
@@ -99,12 +105,15 @@ jobs:
         with:
           node-version: "20"
       - name: Install dependencies
-        run: npm install
+        run: npm install --prefer-offline --no-audit
+        continue-on-error: true
+      - name: Retry npm install if failed
+        run: npm install --prefer-offline --no-audit
       - name: Download Bundle
         uses: actions/download-artifact@v4
         with:
           name: remotion-bundle
-          path: out/bundle.jsbundle.js
+          path: out/
       - name: Download audio
         uses: actions/download-artifact@v4
         continue-on-error: true
@@ -137,7 +146,7 @@ jobs:
       - name: Download Chunks
         uses: actions/download-artifact@v4
         with:
-          pattern: chunk-*
+          pattern: chunk_*
           path: out/
           merge-multiple: true
       - name: Download audio
@@ -179,7 +188,3 @@ jobs:
           YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
           YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
         run: python scripts/youtube_upload.py
-
-
-
-
