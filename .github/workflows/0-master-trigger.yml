@@ -4,9 +4,6 @@ on:
   workflow_dispatch:
 
 jobs:
-  # ══════════════════════════════════════════════════════════════
-  # STAGE 0 — Code Review & Typecheck
-  # ══════════════════════════════════════════════════════════════
   review:
     name: "Stage 0 — Code Review & Typecheck"
     runs-on: ubuntu-latest
@@ -14,9 +11,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
       - name: Install dependencies
-        run: npm ci
+        run: npm install
       - name: Typecheck
         run: npm run typecheck
 
@@ -58,26 +55,15 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
       - name: Install dependencies
-        run: npm ci
-      - name: Create output directory
-        run: mkdir -p out
-      - name: Debug - Check TypeScript files
-        run: |
-          echo "Checking for src/index.ts..."
-          ls -la src/ || echo "src/ directory not found"
-          find . -name "*.ts" -o -name "*.tsx" | head -20
+        run: npm install
       - name: Bundle Project
+        run: npx remotion bundle src/index.ts out/bundle.js --quiet
+      - name: Verify bundle
         run: |
-          npx remotion bundle src/index.ts out/bundle.js --quiet
-      - name: Debug - Check bundle output
-        run: |
-          echo "Checking bundle output..."
-          ls -lh out/ || echo "out/ directory is empty"
           if [ -f "out/bundle.js" ]; then
             echo "✓ Bundle created successfully"
-            wc -l out/bundle.js
           else
             echo "✗ Bundle file not found"
             exit 1
@@ -89,19 +75,27 @@ jobs:
           path: out/bundle.js
           if-no-files-found: error
 
-  render_chunk_01:
-    name: "Stage 2b — Render chunk_01_hook"
+  render:
+    name: "Stage 2b — Render ${{ matrix.chunk.id }}"
     runs-on: ubuntu-latest
     needs: [bundle, audio]
+    strategy:
+      fail-fast: false
+      matrix:
+        chunk:
+          - { id: "chunk_01_hook",      compositionId: "chunk_01_hook" }
+          - { id: "chunk_02_setup",     compositionId: "chunk_02_setup" }
+          - { id: "chunk_03_mechanism", compositionId: "chunk_03_mechanism" }
+          - { id: "chunk_04_proof",     compositionId: "chunk_04_proof" }
+          - { id: "chunk_05_twist",     compositionId: "chunk_05_twist" }
+          - { id: "chunk_06_outro",     compositionId: "chunk_06_outro" }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
       - name: Install dependencies
-        run: npm ci
-      - name: Create output directory
-        run: mkdir -p out
+        run: npm install
       - name: Download Bundle
         uses: actions/download-artifact@v4
         with:
@@ -112,257 +106,35 @@ jobs:
         with:
           name: audio-assets
           path: public/audio/
-      - name: Render chunk_01_hook
+      - name: Install Chrome for Remotion
+        run: npx remotion browser ensure
+      - name: Render chunk
         run: |
-          npx remotion render out/bundle.js "chunk_01_hook" "out/chunk_01_hook.mp4" \
+          npx remotion render \
+            out/bundle.js "${{ matrix.chunk.compositionId }}" "out/${{ matrix.chunk.id }}.mp4" \
             --props '{}' \
             --concurrency 2 \
             --quiet
       - name: Verify render output
         run: |
-          if [ -f "out/chunk_01_hook.mp4" ]; then
-            echo "✓ chunk_01_hook rendered"
-            ls -lh "out/chunk_01_hook.mp4"
+          if [ -f "out/${{ matrix.chunk.id }}.mp4" ]; then
+            echo "✓ ${{ matrix.chunk.id }} rendered"
+            ls -lh "out/${{ matrix.chunk.id }}.mp4"
           else
-            echo "✗ chunk_01_hook render failed"
+            echo "✗ ${{ matrix.chunk.id }} render failed"
             exit 1
           fi
       - name: Upload Chunk Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: chunk_01_hook
-          path: out/chunk_01_hook.mp4
-          if-no-files-found: error
-
-  render_chunk_02:
-    name: "Stage 2b — Render chunk_02_setup"
-    runs-on: ubuntu-latest
-    needs: [render_chunk_01]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-      - name: Install dependencies
-        run: npm ci
-      - name: Create output directory
-        run: mkdir -p out
-      - name: Download Bundle
-        uses: actions/download-artifact@v4
-        with:
-          name: remotion-bundle
-          path: out/
-      - name: Download Audio
-        uses: actions/download-artifact@v4
-        with:
-          name: audio-assets
-          path: public/audio/
-      - name: Render chunk_02_setup
-        run: |
-          npx remotion render out/bundle.js "chunk_02_setup" "out/chunk_02_setup.mp4" \
-            --props '{}' \
-            --concurrency 2 \
-            --quiet
-      - name: Verify render output
-        run: |
-          if [ -f "out/chunk_02_setup.mp4" ]; then
-            echo "✓ chunk_02_setup rendered"
-            ls -lh "out/chunk_02_setup.mp4"
-          else
-            echo "✗ chunk_02_setup render failed"
-            exit 1
-          fi
-      - name: Upload Chunk Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: chunk_02_setup
-          path: out/chunk_02_setup.mp4
-          if-no-files-found: error
-
-  render_chunk_03:
-    name: "Stage 2b — Render chunk_03_mechanism"
-    runs-on: ubuntu-latest
-    needs: [render_chunk_02]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-      - name: Install dependencies
-        run: npm ci
-      - name: Create output directory
-        run: mkdir -p out
-      - name: Download Bundle
-        uses: actions/download-artifact@v4
-        with:
-          name: remotion-bundle
-          path: out/
-      - name: Download Audio
-        uses: actions/download-artifact@v4
-        with:
-          name: audio-assets
-          path: public/audio/
-      - name: Render chunk_03_mechanism
-        run: |
-          npx remotion render out/bundle.js "chunk_03_mechanism" "out/chunk_03_mechanism.mp4" \
-            --props '{}' \
-            --concurrency 2 \
-            --quiet
-      - name: Verify render output
-        run: |
-          if [ -f "out/chunk_03_mechanism.mp4" ]; then
-            echo "✓ chunk_03_mechanism rendered"
-            ls -lh "out/chunk_03_mechanism.mp4"
-          else
-            echo "✗ chunk_03_mechanism render failed"
-            exit 1
-          fi
-      - name: Upload Chunk Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: chunk_03_mechanism
-          path: out/chunk_03_mechanism.mp4
-          if-no-files-found: error
-
-  render_chunk_04:
-    name: "Stage 2b — Render chunk_04_proof"
-    runs-on: ubuntu-latest
-    needs: [render_chunk_03]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-      - name: Install dependencies
-        run: npm ci
-      - name: Create output directory
-        run: mkdir -p out
-      - name: Download Bundle
-        uses: actions/download-artifact@v4
-        with:
-          name: remotion-bundle
-          path: out/
-      - name: Download Audio
-        uses: actions/download-artifact@v4
-        with:
-          name: audio-assets
-          path: public/audio/
-      - name: Render chunk_04_proof
-        run: |
-          npx remotion render out/bundle.js "chunk_04_proof" "out/chunk_04_proof.mp4" \
-            --props '{}' \
-            --concurrency 2 \
-            --quiet
-      - name: Verify render output
-        run: |
-          if [ -f "out/chunk_04_proof.mp4" ]; then
-            echo "✓ chunk_04_proof rendered"
-            ls -lh "out/chunk_04_proof.mp4"
-          else
-            echo "✗ chunk_04_proof render failed"
-            exit 1
-          fi
-      - name: Upload Chunk Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: chunk_04_proof
-          path: out/chunk_04_proof.mp4
-          if-no-files-found: error
-
-  render_chunk_05:
-    name: "Stage 2b — Render chunk_05_twist"
-    runs-on: ubuntu-latest
-    needs: [render_chunk_04]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-      - name: Install dependencies
-        run: npm ci
-      - name: Create output directory
-        run: mkdir -p out
-      - name: Download Bundle
-        uses: actions/download-artifact@v4
-        with:
-          name: remotion-bundle
-          path: out/
-      - name: Download Audio
-        uses: actions/download-artifact@v4
-        with:
-          name: audio-assets
-          path: public/audio/
-      - name: Render chunk_05_twist
-        run: |
-          npx remotion render out/bundle.js "chunk_05_twist" "out/chunk_05_twist.mp4" \
-            --props '{}' \
-            --concurrency 2 \
-            --quiet
-      - name: Verify render output
-        run: |
-          if [ -f "out/chunk_05_twist.mp4" ]; then
-            echo "✓ chunk_05_twist rendered"
-            ls -lh "out/chunk_05_twist.mp4"
-          else
-            echo "✗ chunk_05_twist render failed"
-            exit 1
-          fi
-      - name: Upload Chunk Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: chunk_05_twist
-          path: out/chunk_05_twist.mp4
-          if-no-files-found: error
-
-  render_chunk_06:
-    name: "Stage 2b — Render chunk_06_outro"
-    runs-on: ubuntu-latest
-    needs: [render_chunk_05]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-      - name: Install dependencies
-        run: npm ci
-      - name: Create output directory
-        run: mkdir -p out
-      - name: Download Bundle
-        uses: actions/download-artifact@v4
-        with:
-          name: remotion-bundle
-          path: out/
-      - name: Download Audio
-        uses: actions/download-artifact@v4
-        with:
-          name: audio-assets
-          path: public/audio/
-      - name: Render chunk_06_outro
-        run: |
-          npx remotion render out/bundle.js "chunk_06_outro" "out/chunk_06_outro.mp4" \
-            --props '{}' \
-            --concurrency 2 \
-            --quiet
-      - name: Verify render output
-        run: |
-          if [ -f "out/chunk_06_outro.mp4" ]; then
-            echo "✓ chunk_06_outro rendered"
-            ls -lh "out/chunk_06_outro.mp4"
-          else
-            echo "✗ chunk_06_outro render failed"
-            exit 1
-          fi
-      - name: Upload Chunk Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: chunk_06_outro
-          path: out/chunk_06_outro.mp4
+          name: ${{ matrix.chunk.id }}
+          path: out/${{ matrix.chunk.id }}.mp4
           if-no-files-found: error
 
   assemble:
     name: "Stage 3 — Assemble Final Video"
     runs-on: ubuntu-latest
-    needs: [render_chunk_06, audio]
+    needs: [render, audio]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -399,7 +171,6 @@ jobs:
             python scripts/assemble_video.py
           else
             echo "Warning: assemble_video.py not found, using fallback concatenation"
-            # Basic fallback: concatenate chunks using ffmpeg
             ls out/chunk_*.mp4 | sort | while read f; do echo "file '$f'"; done > concat.txt
             ffmpeg -f concat -safe 0 -i concat.txt -c copy out/BoneConduction_FINAL.mp4
           fi

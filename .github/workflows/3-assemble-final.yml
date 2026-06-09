@@ -29,9 +29,16 @@ jobs:
       - name: Download all chunk artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: chunk-*
+          pattern: "chunk_*"
           path: out/
           merge-multiple: true
+
+      - name: Download audio assets
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: audio-assets
+          path: public/audio/
 
       - name: List downloaded chunks
         run: ls -lh out/
