@@ -1,5 +1,8 @@
 name: "0 — MASTER TRIGGER (Full Pipeline + YouTube Upload)"
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 on:
   workflow_dispatch:
     inputs:
@@ -17,9 +20,6 @@ on:
         options: ["true", "false"]
 
 jobs:
-  # ══════════════════════════════════════════════════════════════
-  # STAGE 0 — Code Review & Typecheck
-  # ══════════════════════════════════════════════════════════════
   review:
     name: "Stage 0 — Code Review & Typecheck"
     runs-on: ubuntu-latest
@@ -86,16 +86,16 @@ jobs:
           done
           if [ ! -d "node_modules" ]; then echo "npm install ultimately failed"; exit 1; fi
       - name: Create output directory
-        run: mkdir -p out
+        run: mkdir -p out/bundle
       - name: Create Bundle
-        run: npx remotion bundle src/index.ts --output out/bundle.js
+        run: npx remotion bundle src/index.ts --out-dir out/bundle
       - name: List bundle output
-        run: ls -la out/
+        run: ls -la out/bundle/
       - name: Upload Bundle
         uses: actions/upload-artifact@v4
         with:
           name: remotion-bundle
-          path: out/bundle.js
+          path: out/bundle/
           if-no-files-found: error
 
   render:
@@ -129,14 +129,14 @@ jobs:
           done
           if [ ! -d "node_modules" ]; then echo "npm install ultimately failed"; exit 1; fi
       - name: Create output directory
-        run: mkdir -p out
+        run: mkdir -p out/bundle
       - name: Download Bundle
         uses: actions/download-artifact@v4
         with:
           name: remotion-bundle
-          path: out/
+          path: out/bundle/
       - name: List downloaded bundle
-        run: ls -la out/
+        run: ls -la out/bundle/
       - name: Download audio
         uses: actions/download-artifact@v4
         continue-on-error: true
@@ -144,7 +144,7 @@ jobs:
           name: audio-assets
           path: public/audio/
       - name: Render Chunk
-        run: npx remotion render out/bundle.js ${{ matrix.chunk.id }} out/${{ matrix.chunk.id }}.mp4 --props '{}'
+        run: npx remotion render out/bundle ${{ matrix.chunk.id }} out/${{ matrix.chunk.id }}.mp4 --props '{}'
       - name: Upload Chunk
         uses: actions/upload-artifact@v4
         with:
@@ -214,7 +214,7 @@ jobs:
           path: out/
       - name: Upload to YouTube
         env:
-          YT_CLIENT_ID:     ${{ secrets.YT_CLIENT_ID }}
+          YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
           YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
           YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
         run: python scripts/youtube_upload.py
