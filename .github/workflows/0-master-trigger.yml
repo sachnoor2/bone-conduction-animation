@@ -42,17 +42,18 @@ jobs:
           mkdir -p public/audio
           python scripts/generate_audio_kokoro.py
 
-      - name: Bundle Project
+      - name: Debug Files
         run: |
-          mkdir -p out
-          npx remotion bundle src/index.ts --output=out/bundle.js
+          ls -R public
+          ls -la src
 
       - name: Install Chrome
         run: npx remotion browser ensure
 
       - name: Render Full Video
         run: |
-          npx remotion render out/bundle.js LizardTail out/BoneConduction_FINAL.mp4 --codec=h264 --crf=18
+          mkdir -p out
+          npx remotion render src/index.ts LizardTail out/BoneConduction_FINAL.mp4 --codec=h264 --crf=18
         env:
           REMOTION_ALLOW_EVAL: true
 
