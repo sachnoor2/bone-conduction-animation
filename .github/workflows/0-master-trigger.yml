@@ -4,22 +4,13 @@ on:
   workflow_dispatch:
     inputs:
       skip_audio:
-        description: "Skip audio generation (use existing artifacts)"
+        description: "Skip audio generation"
         required: false
         default: "false"
         type: choice
         options: ["false", "true"]
-      upload_to_youtube:
-        description: "Upload final video to YouTube"
-        required: false
-        default: "true"
-        type: choice
-        options: ["true", "false"]
 
 jobs:
-  # ══════════════════════════════════════════════════════════════
-  # STAGE 1 — Code Review & Typecheck
-  # ══════════════════════════════════════════════════════════════
   review:
     name: "Stage 0 — Code Review & Typecheck"
     runs-on: ubuntu-latest
@@ -44,35 +35,19 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install system deps
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y ffmpeg espeak-ng
+        run: sudo apt-get update -qq && sudo apt-get install -y ffmpeg
       - name: Install Python deps
-        run: pip install kokoro-onnx soundfile pydub --quiet
-      - name: Cache Kokoro model
-        id: cache-kokoro
-        uses: actions/cache@v4
-        with:
-          path: |
-            /tmp/kokoro-v1.0.onnx
-            /tmp/voices-v1.0.bin
-          key: kokoro-model-v1.0
-      - name: Download Kokoro model
-        if: steps.cache-kokoro.outputs.cache-hit != 'true'
-        run: |
-          BASE="https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0"
-          curl -L "$BASE/kokoro-v1.0.onnx" -o /tmp/kokoro-v1.0.onnx
-          curl -L "$BASE/voices-v1.0.bin"  -o /tmp/voices-v1.0.bin
-      - name: Generate narration audio
+        run: pip install pydub --quiet
+      - name: Generate narration audio (ElevenLabs)
         run: python scripts/generate_audio.py
-      - name: Sync check + auto-fix
-        run: python scripts/check_audio_sync.py
+        env:
+          ELEVEN_API_KEY: ${{ secrets.ELEVEN_API_KEY }}
       - name: Upload audio artifacts
         uses: actions/upload-artifact@v4
         with:
           name: audio-assets
           path: public/audio/
-          retention-days: 30
+          retention-days: 7
 
   bundle:
     name: "Stage 2a — Bundle Project"
@@ -176,6 +151,5 @@ jobs:
       - name: Upload final video
         uses: actions/upload-artifact@v4
         with:
-          name: BoneConduction-FINAL
+          name: LizardTail-FINAL
           path: out/BoneConduction_FINAL.mp4
-
