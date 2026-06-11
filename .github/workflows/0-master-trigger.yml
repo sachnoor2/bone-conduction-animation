@@ -1,4 +1,4 @@
-name: "0 — MASTER TRIGGER (Unified Pipeline)"
+name: "0 — MASTER TRIGGER (Full Video Single Render)"
 
 on:
   workflow_dispatch:
@@ -41,27 +41,18 @@ jobs:
         run: python scripts/generate_audio_kokoro.py
 
       - name: Bundle Project
-        run: npx remotion bundle src/index.ts --output=out/bundle.js
+        run: |
+          mkdir -p out
+          npx remotion bundle src/index.ts --output=out/bundle.js
 
       - name: Install Chrome
         run: npx remotion browser ensure
 
-      - name: Render Video Chunks
+      - name: Render Full Video
         run: |
-          mkdir -p out/chunks
-          npx remotion render out/bundle.js chunk_01_hook out/chunks/chunk_01_hook.mp4 --codec=h264 --crf=18
-          npx remotion render out/bundle.js chunk_02_setup out/chunks/chunk_02_setup.mp4 --codec=h264 --crf=18
-          npx remotion render out/bundle.js chunk_03_mechanism out/chunks/chunk_03_mechanism.mp4 --codec=h264 --crf=18
-          npx remotion render out/bundle.js chunk_04_proof out/chunks/chunk_04_proof.mp4 --codec=h264 --crf=18
-          npx remotion render out/bundle.js chunk_05_twist out/chunks/chunk_05_twist.mp4 --codec=h264 --crf=18
-          npx remotion render out/bundle.js chunk_06_outro out/chunks/chunk_06_outro.mp4 --codec=h264 --crf=18
+          npx remotion render out/bundle.js LizardTail out/BoneConduction_FINAL.mp4 --codec=h264 --crf=18
         env:
           REMOTION_ALLOW_EVAL: true
-
-      - name: Assemble Final Video
-        run: |
-          mv out/chunks/*.mp4 out/
-          python scripts/assemble_video.py
 
       - name: Upload Final Video
         uses: actions/upload-artifact@v4
