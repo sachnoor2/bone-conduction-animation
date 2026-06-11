@@ -1,3 +1,4 @@
+import React from 'react';
 import {
 	AbsoluteFill,
 	spring,
@@ -17,39 +18,40 @@ export const LizardTail: React.FC = () => {
 	});
 
 	// Screen shake logic for the "detach" moment
-	const shake = frame > 100 && frame < 120 ? Math.sin(frame) * 5 : 0;
+	const shake = (frame > 100 && frame < 120) ? Math.sin(frame) * 5 : 0;
 
 	return (
 		<AbsoluteFill
-			style:{
+			style={{
 				backgroundColor: '#0E1117',
 				justifyContent: 'center',
 				alignItems: 'center',
-				transform: `translateY(${shake}px)`}
+				transform: `translateY(${shake}px)`,
+			}}
 		>
 			<div
-				style:{
+				style={{
 					fontFamily: 'sans-serif',
 					color: '#FDCB6E',
 					fontSize: 80,
 					opacity: springVal,
 					textAlign: 'center',
-					padding: '0 40p',
-				}
+					padding: '0 40px',
+				}}
 			>
-				CHIPKALI KI POONCH<br>
-				LIZARD TAIL SURVIVAL)
+				CHIPKALI KI POONCH<br/>
+				(LIZARD TAIL SURVIVAL)
 			</div>
 			
 			{/* Mechanism visualization */}
 			{frame > 60 && (
-				<div style:{
+				<div style={{
 					marginTop: 50,
 					color: '#00CEC9',
 					fontSize: 40,
 					fontFamily: 'monospace',
-					opacity: ppringVal
-				}>
+					opacity: springVal
+				}}>
 					Reflex Arcs Active...
 				</div>
 			)}
