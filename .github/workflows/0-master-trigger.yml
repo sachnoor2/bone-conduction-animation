@@ -19,8 +19,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
+          cache: 'npm'
       - name: Install dependencies
-        run: npm install
+        run: npm ci --prefer-offline --no-audit
       - name: Typecheck
         run: npm run typecheck
 
@@ -52,7 +53,7 @@ jobs:
         with:
           name: audio-assets
           path: public/audio/
-          retention-days: 7
+          retention-days: 1
 
   bundle:
     name: "Stage 2a — Bundle Project"
@@ -63,17 +64,21 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
+          cache: 'npm'
       - name: Install dependencies
-        run: npm install
+        run: npm ci --prefer-offline --no-audit
       - name: Create Bundle
         run: |
           mkdir -p out
           npx remotion bundle src/index.ts --output=out/bundle.js
+          ls -la out/
       - name: Upload Bundle
         uses: actions/upload-artifact@v4
         with:
           name: remotion-bundle
           path: out/bundle.js
+          if-no-files-found: error
+          retention-days: 1
 
   render:
     name: "Stage 2b — Render ${{ matrix.chunk.id }}"
@@ -96,7 +101,7 @@ jobs:
         with:
           node-version: "20"
       - name: Install dependencies
-        run: npm install
+        run: npm ci --prefer-offline --no-audit
       - name: Download Bundle
         uses: actions/download-artifact@v4
         with:
