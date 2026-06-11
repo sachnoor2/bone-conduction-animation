@@ -66,7 +66,9 @@ jobs:
       - name: Install dependencies
         run: npm install
       - name: Create Bundle
-        run: npx remotion bundle src/index.ts out/bundle.js
+        run: |
+          mkdir -p out
+          npx remotion bundle src/index.ts --output=out/bundle.js
       - name: Upload Bundle
         uses: actions/upload-artifact@v4
         with:
@@ -110,6 +112,7 @@ jobs:
         run: npx remotion browser ensure
       - name: Render chunk
         run: |
+          mkdir -p out
           npx remotion render \
             out/bundle.js \
             ${{ matrix.chunk.compositionId }} \
@@ -124,6 +127,7 @@ jobs:
         with:
           name: chunk-${{ matrix.chunk.id }}
           path: out/${{ matrix.chunk.id }}.mp4
+          if-no-files-found: error
 
   assemble:
     name: "Stage 3 — Assemble Final Video"
