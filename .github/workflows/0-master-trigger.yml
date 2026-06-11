@@ -1,11 +1,11 @@
-name: "0 — MASTER TRIGGER (Full Video Single Render)"
+name: '0 — MASTER TRIGGER (Full Video Single Render)'
 
 on:
   workflow_dispatch:
 
 jobs:
   production:
-    name: "Full Video Production"
+    name: 'Full Video Production'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -13,12 +13,12 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: '20'
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: '3.11'
 
       - name: Install System Deps
         run: |
@@ -33,12 +33,14 @@ jobs:
 
       - name: Download Kokoro Model
         run: |
-          BASE="https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0"
+          BASE='https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0'
           curl -L "$BASE/kokoro-v1.0.onnx" -o /tmp/kokoro-v1.0.onnx
           curl -L "$BASE/voices-v1.0.bin"  -o /tmp/voices-v1.0.bin
 
       - name: Generate Audio
-        run: python scripts/generate_audio_kokoro.py
+        run: |
+          mkdir -p public/audio
+          python scripts/generate_audio_kokoro.py
 
       - name: Bundle Project
         run: |
