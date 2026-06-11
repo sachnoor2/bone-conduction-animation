@@ -35,13 +35,15 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install system deps
-        run: sudo apt-get update -qq && sudo apt-get install -y ffmpeg
+        run: sudo apt-get update -qq && sudo apt-get install -y ffmpeg libespeak-ng-dev
       - name: Install Python deps
-        run: pip install pydub --quiet
-      - name: Generate narration audio (ElevenLabs)
-        run: python scripts/generate_audio.py
-        env:
-          ELEVEN_API_KEY: ${{ secrets.ELEVEN_API_KEY }}
+        run: pip install pydub kokoro-onnx soundfile --quiet
+      - name: Setup Kokoro Models
+        run: |
+          wget -q https://huggingface.co/hexgrad/Kokoro-82M/resolve/main/kokoro-v1.0.onnx -O /tmp/kokoro-v1.0.onnx
+          wget -q https://huggingface.co/hexgrad/Kokoro-82M/resolve/main/voices-v1.0.bin -O /tmp/voices-v1.0.bin
+      - name: Generate Audio (Kokoro)
+        run: python scripts/generate_audio_kokoro.py
       - name: Upload audio artifacts
         uses: actions/upload-artifact@v4
         with:
