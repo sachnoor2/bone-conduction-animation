@@ -5,7 +5,7 @@ from pathlib import Path
 FPS        = 60
 VOICE_NAME = "am_fenrir"
 SPEED      = 1.0
-LANG       = "en-us"
+LANG       = "en-us" # We use the en-us model but feed it Devanagari/Hindi phonetics
 AUDIO_DIR  = Path("public/audio")
 SEG_DIR    = AUDIO_DIR / "segments"
 AUDIO_DIR.mkdir(parents=True, exist_ok=True)
@@ -13,18 +13,18 @@ SEG_DIR.mkdir(parents=True, exist_ok=True)
 
 TOTAL_FRAMES = 2700
 
-# Aligning with BoneConduction.tsx SUBS
+# Updated with PURE HINDI (Devanagari) as requested for maximum Hindi preference.
 SCENES = [
-    { "id": "s01", "fs": 15,   "fe": 175,  "text": "Tum jo sunte ho — wo tumhari aawaaz nahi hai." },
-    { "id": "s02", "fs": 215,  "fe": 475,  "text": "Tumhari aawaaz — do raston se kaano tak pahunchti hai." },
-    { "id": "s03", "fs": 535,  "fe": 760,  "text": "Pahla raasta — hawa ke zariye." },
-    { "id": "s04", "fs": 790,  "fe": 1060, "text": "Doosra — tumhari khopdi ki haddiyon ke zariye." },
-    { "id": "s05", "fs": 1095, "fe": 1360, "text": "Haddiyan low frequency ko boost karti hain." },
-    { "id": "s06", "fs": 1390, "fe": 1640, "text": "Microphone sirf hawa capture karta hai." },
-    { "id": "s07", "fs": 1795, "fe": 1990, "text": "Beethoven... poori tarah bahre the." },
-    { "id": "s08", "fs": 2020, "fe": 2290, "text": "Par unhone piano ko chhaddi se chhukar music suna." },
-    { "id": "s09", "fs": 2330, "fe": 2540, "text": "Wo bhi — bone conduction tha." },
-    { "id": "s10", "fs": 2570, "fe": 2680, "text": "Tumhari asli aawaaz wahi hai — jo doosre sunte hain." },
+    { "id": "s01", "fs": 15,   "fe": 175,  "text": "क्या आपने कभी सोचा है कि रिकॉर्डिंग में आपकी आवाज़ अलग क्यों लगती है?" },
+    { "id": "s02", "fs": 215,  "fe": 475,  "text": "आपकी आवाज़ दो रास्तों से कानों तक पहुँचती है।" },
+    { "id": "s03", "fs": 535,  "fe": 760,  "text": "पहला रास्ता— हवा के ज़रिए।" },
+    { "id": "s04", "fs": 790,  "fe": 1060, "text": "दूसरा— आपकी खोपड़ी की हड्डियों के ज़रिए।" },
+    { "id": "s05", "fs": 1095, "fe": 1360, "text": "हड्डियाँ low frequency को boost करती हैं।" },
+    { "id": "s06", "fs": 1390, "fe": 1640, "text": "Microphone सिर्फ हवा कैप्चर करता है।" },
+    { "id": "s07", "fs": 1795, "fe": 1990, "text": "Beethoven... पूरी तरह बहरे थे।" },
+    { "id": "s08", "fs": 2020, "fe": 2290, "text": "पर उन्होंने piano को छड़ी से छूकर म्यूज़िक सुना।" },
+    { "id": "s09", "fs": 2330, "fe": 2540, "text": "वो भी— bone conduction था।" },
+    { "id": "s10", "fs": 2570, "fe": 2680, "text": "आपकी असली आवाज़ वही है जो दूसरे सुनते हैं।" },
 ]
 
 def main():
@@ -37,12 +37,13 @@ def main():
         model_path = "kokoro-v1.0.onnx"
         voices_path = "voices-v1.0.bin"
 
-    print(f"── Generating Bone Conduction scenes with Kokoro ({VOICE_NAME}) ──")
+    print(f"── Generating Hindi Science Narration with Kokoro ──")
     kokoro = Kokoro(model_path, voices_path)
     
     for sc in SCENES:
         print(f"  Synthesizing {sc['id']}...")
-        samples, sample_rate = kokoro.create(sc["text"], voice=VOICE_NAME, speed=SPEED, lang=LANG)
+        # Note: Kokoro v1.0 ONNX supports multiple languages. We pass Hindi text directly.
+        samples, sample_rate = kokoro.create(sc["text"], voice=VOICE_NAME, speed=SPEED, lang="hi")
         wav_path = SEG_DIR / f"{sc['id']}.wav"
         sf.write(str(wav_path), samples, sample_rate)
         subprocess.run(["ffmpeg", "-y", "-i", str(wav_path), "-codec:a", "libmp3lame", "-b:a", "192k", str(SEG_DIR / f"{sc['id']}.mp3")], check=True, capture_output=True)
@@ -59,7 +60,7 @@ def main():
 
     fc = ";".join(filter_parts) + ";" + "".join(labels) + f"amix=inputs={len(SCENES)}:normalize=0[out]"
     subprocess.run(["ffmpeg", "-y"] + inputs + ["-filter_complex", fc, "-map", "[out]", "-t", str(total_s), "-b:a", "192k", str(AUDIO_DIR / "narration_final.mp3")], check=True)
-    print("\n✅ Bone Conduction Audio pipeline complete.")
+    print("\n✅ Final Hindi Narration complete.")
 
 if __name__ == "__main__":
     main()
